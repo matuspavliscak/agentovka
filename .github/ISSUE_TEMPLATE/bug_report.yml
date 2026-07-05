@@ -1,0 +1,68 @@
+name: Bug report
+description: Report a defect in Agentovka (client, MCP server, or archive)
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please do not paste real credentials, real message
+        contents, or personal data from a production data box. Reproduce against
+        the test environment where possible.
+  - type: input
+    id: version
+    attributes:
+      label: Agentovka version
+      description: Output of `pip show agentovka` or the git commit.
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: ISDS environment
+      description: Which environment did the problem occur against?
+      options:
+        - test (datovka-test.gov.cz / ws1.czebox.cz)
+        - production
+        - not applicable (offline, e.g. ZFO parsing)
+    validations:
+      required: true
+  - type: dropdown
+    id: layer
+    attributes:
+      label: Affected layer
+      options:
+        - isds_client (library / CLI)
+        - agentovka_mcp (MCP server)
+        - local archive
+        - ZFO parser
+        - documentation
+        - not sure
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: A minimal sequence (tool calls, CLI commands, or code) that triggers the bug.
+      render: shell
+  - type: textarea
+    id: environment-details
+    attributes:
+      label: Environment
+      description: Python version, OS, MCP client (Claude Desktop / Claude Code / other).
+      placeholder: |
+        Python 3.12, macOS 15, Claude Desktop
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / error output
+      description: Relevant error messages. Redact any credentials or personal data.
+      render: shell
