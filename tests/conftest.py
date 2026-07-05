@@ -51,10 +51,6 @@ def message_xml(
       <q:dbIDRecipient>bbbbbbb</q:dbIDRecipient>
       <q:dmRecipient>Jan Novák</q:dmRecipient>
       <q:dmAnnotation>{subject}</q:dmAnnotation>
-      <q:dmMessageStatus>{status}</q:dmMessageStatus>
-      <q:dmDeliveryTime>2026-06-01T10:00:00.000+02:00</q:dmDeliveryTime>
-      <q:dmAcceptanceTime>2026-06-03T08:30:00.000+02:00</q:dmAcceptanceTime>
-      <q:dmAttachmentSize>1</q:dmAttachmentSize>
       <q:dmFiles>
         <q:dmFile dmMimeType="application/pdf" dmFileMetaType="main"
                   dmFileDescr="{attachment_name}">
@@ -62,6 +58,11 @@ def message_xml(
         </q:dmFile>
       </q:dmFiles>
     </q:dmDm>
+    <!-- Per tReturnedMessage in dmBaseTypes.xsd these are SIBLINGS of dmDm. -->
+    <q:dmDeliveryTime>2026-06-01T10:00:00.000+02:00</q:dmDeliveryTime>
+    <q:dmAcceptanceTime>2026-06-03T08:30:00.000+02:00</q:dmAcceptanceTime>
+    <q:dmMessageStatus>{status}</q:dmMessageStatus>
+    <q:dmAttachmentSize>1</q:dmAttachmentSize>
   </q:dmReturnedMessage>
 </q:MessageDownloadResponse>""".encode()
 

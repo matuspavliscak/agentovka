@@ -22,6 +22,7 @@ uv.lock
 *.zfo
 .env
 .env.*
+!.env.example
 
 # Editors
 .idea/

@@ -183,3 +183,34 @@ def test_multiple_attachments_one_main_ok(reset_singletons: _StubClient) -> None
     assert result["dry_run"] is True
     metas = [a["meta_type"] for a in result["would_send"]["attachments"]]
     assert metas == ["main", "enclosure"]
+
+
+def test_read_archived_message_uses_pythonic_keys(
+    reset_singletons: _StubClient, sample_zfo: bytes
+) -> None:
+    from isds_client.zfo import parse_zfo
+
+    parsed = parse_zfo(sample_zfo)
+    server.get_archive().store(parsed.envelope, sample_zfo, parsed.files)
+    data = server.read_archived_message("10123456")
+    # Same key shape as download_message/list_* tools, not the dmID aliases.
+    assert data["envelope"]["message_id"] == "10123456"
+    assert "dmID" not in data["envelope"]
+
+
+def test_search_archive_reports_bad_query_as_error(
+    reset_singletons: _StubClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sqlite3
+
+    def boom(query: str, limit: int = 50) -> list[Any]:
+        raise sqlite3.OperationalError("fts5: syntax error")
+
+    monkeypatch.setattr(server.get_archive(), "search", boom)
+    result = server.search_archive("((((")
+    assert "error" in result
+
+
+def test_delivery_deadline_rejects_bad_today(reset_singletons: _StubClient) -> None:
+    result = server.get_delivery_deadline("2026-06-01", today="7/5/2026")
+    assert result["error"] == "today must be ISO format YYYY-MM-DD"

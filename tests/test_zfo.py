@@ -71,3 +71,21 @@ def test_billion_laughs_is_rejected() -> None:
     )
     with pytest.raises(ZfoParseError):
         parse_zfo(build_cms(bomb))
+
+
+def test_zero_byte_attachment_is_kept() -> None:
+    blob = build_cms(message_xml(attachment_bytes=b""))
+    parsed = parse_zfo(blob)
+    assert parsed.files[0].content == b""
+    assert parsed.files[0].size == 0
+
+
+def test_sibling_delivery_fields_are_parsed() -> None:
+    # conftest places dmDeliveryTime/dmAcceptanceTime/dmMessageStatus as
+    # siblings of dmDm (the schema-correct position, tReturnedMessage).
+    parsed = parse_zfo(build_cms(message_xml(status=5)))
+    env = parsed.envelope
+    assert env.delivery_time is not None and env.delivery_time.day == 1
+    assert env.acceptance_time is not None and env.acceptance_time.day == 3
+    assert env.status == MessageStatus.DELIVERED_BY_FICTION
+    assert env.attachment_size_kb == 1

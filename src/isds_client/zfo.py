@@ -20,6 +20,7 @@ verified later by external tools.
 from __future__ import annotations
 
 import base64
+import contextlib
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -94,6 +95,11 @@ def _find_first(root: Element, local_name: str) -> Element | None:
     return None
 
 
+def _global_text(root: Element, local_name: str) -> str | None:
+    el = _find_first(root, local_name)
+    return el.text if el is not None else None
+
+
 def _child_map(el: Element) -> dict[str, Any]:
     return {_strip_ns(child.tag): (child.text or None) for child in el}
 
@@ -149,8 +155,11 @@ def _parse_files(root: Element) -> list[DmFile]:
             continue
         content: bytes | None = None
         for child in el:
-            if _strip_ns(child.tag) == "dmEncodedContent" and child.text:
-                content = base64.b64decode(re.sub(r"\s+", "", child.text))
+            if _strip_ns(child.tag) == "dmEncodedContent":
+                # An empty element is a legal zero-byte attachment, not a
+                # missing one - decode to b"" so it still gets archived.
+                text = child.text or ""
+                content = base64.b64decode(re.sub(r"\s+", "", text))
         files.append(
             DmFile(
                 file_name=el.get("dmFileDescr") or "attachment.bin",
@@ -205,6 +214,27 @@ def parse_zfo(data: bytes) -> ParsedZfo:
         dm_id_el = _find_first(root, "dmID")
         if dm_id_el is not None and dm_id_el.text:
             envelope = envelope.model_copy(update={"message_id": dm_id_el.text})
+
+    # Per the ISDS schema (tReturnedMessage / tDelivery in dmBaseTypes.xsd) the
+    # delivery timestamps, status and attachment size are SIBLINGS of dmDm, not
+    # its children - fill them in from a document-wide lookup when the dmDm
+    # parse left them empty. (The message contains each element at most once.)
+    updates: dict[str, Any] = {}
+    if envelope.delivery_time is None:
+        updates["delivery_time"] = _parse_time(_global_text(root, "dmDeliveryTime"))
+    if envelope.acceptance_time is None:
+        updates["acceptance_time"] = _parse_time(_global_text(root, "dmAcceptanceTime"))
+    if envelope.status is None:
+        status_raw = _global_text(root, "dmMessageStatus")
+        if status_raw is not None:
+            with contextlib.suppress(ValueError):
+                updates["status"] = MessageStatus(int(status_raw))
+    if envelope.attachment_size_kb is None:
+        size_raw = _global_text(root, "dmAttachmentSize")
+        if size_raw is not None and size_raw.isdigit():
+            updates["attachment_size_kb"] = int(size_raw)
+    if updates:
+        envelope = envelope.model_copy(update=updates)
 
     return ParsedZfo(
         envelope=envelope,

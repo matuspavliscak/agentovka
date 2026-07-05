@@ -21,18 +21,21 @@ mailbox on its own - every ISDS call happens only in response to a tool call.
 from __future__ import annotations
 
 import base64
+import sqlite3
 from datetime import date, datetime
 from typing import Annotated, Any
+from zoneinfo import ZoneInfo
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from agentovka_mcp.archive import Archive, UnsafeIdentifierError
+from agentovka_mcp.archive import Archive, UnsafeIdentifierError, is_text_mime, safe_filename
 from agentovka_mcp.config import Settings, load_settings
 from agentovka_mcp.deadlines import describe_deadline
 from isds_client.client import IsdsClient
 from isds_client.errors import IsdsError
+from isds_client.models import MessageEnvelope
 from isds_client.zfo import ZfoParseError, parse_zfo
 
 _DELIVERY_WARNING = (
@@ -168,6 +171,10 @@ def read_archived_message(
     data = get_archive().get(message_id)
     if data is None:
         return {"error": f"Message {message_id} is not in the local archive."}
+    # metadata.json stores the envelope under ISDS alias keys (dmID, ...);
+    # convert to the same pythonic shape the other tools return.
+    if isinstance(data.get("envelope"), dict):
+        data["envelope"] = _envelope_dict(MessageEnvelope.model_validate(data["envelope"]))
     return data
 
 
@@ -182,7 +189,10 @@ def search_archive(
     query: Annotated[str, Field(description="Full-text query (SQLite FTS5 syntax)")],
     limit: Annotated[int, Field(ge=1, le=200)] = 50,
 ) -> dict[str, Any]:
-    msgs = get_archive().search(query, limit=limit)
+    try:
+        msgs = get_archive().search(query, limit=limit)
+    except sqlite3.Error as exc:
+        return {"error": f"invalid search query: {exc}"}
     return {
         "messages": [
             {"message_id": m.message_id, "subject": m.subject, "sender": m.sender} for m in msgs
@@ -210,7 +220,15 @@ def get_delivery_deadline(
         delivered = date.fromisoformat(delivery_date)
     except ValueError:
         return {"error": "delivery_date must be ISO format YYYY-MM-DD"}
-    ref = date.fromisoformat(today) if today else date.today()
+    if today is not None:
+        try:
+            ref = date.fromisoformat(today)
+        except ValueError:
+            return {"error": "today must be ISO format YYYY-MM-DD"}
+    else:
+        # Fiction of delivery is a Czech legal concept - "today" means the
+        # date in Prague, not on a possibly UTC-configured server.
+        ref = datetime.now(ZoneInfo("Europe/Prague")).date()
     return describe_deadline(delivered, today=ref)
 
 
@@ -298,11 +316,7 @@ def download_message(
 
     text_previews = []
     for f in parsed.files:
-        if (
-            f.content
-            and f.mime_type
-            and (f.mime_type.startswith("text/") or f.mime_type.endswith("xml"))
-        ):
+        if f.content and is_text_mime(f.mime_type):
             text_previews.append(
                 {
                     "file_name": f.file_name,
@@ -317,6 +331,9 @@ def download_message(
         "attachments": [
             {
                 "file_name": f.file_name,
+                # Attachment file names are sanitised before hitting the disk;
+                # stored_as is the name actually present under archived_to.
+                "stored_as": safe_filename(f.file_name),
                 "mime_type": f.mime_type,
                 "size": f.size,
                 "meta_type": f.meta_type,

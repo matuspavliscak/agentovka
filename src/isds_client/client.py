@@ -27,6 +27,7 @@ therefore do not trigger delivery of received messages.
 from __future__ import annotations
 
 import enum
+import re
 from datetime import datetime
 from importlib import resources
 from typing import Any
@@ -34,6 +35,7 @@ from typing import Any
 from requests import Session
 from requests.auth import HTTPBasicAuth
 from zeep import Client, Settings
+from zeep import exceptions as zeep_exceptions
 from zeep.transports import Transport
 
 from isds_client.errors import IsdsAuthError, IsdsResponseError
@@ -90,6 +92,16 @@ def _check_status(code: str | None, message: str | None) -> None:
     raise IsdsResponseError(code or "????", message or "")
 
 
+def _check_dm(resp: Any) -> None:
+    """Check the dmStatus envelope of a dm_* service response."""
+    _check_status(_get(resp, "dmStatus", "dmStatusCode"), _get(resp, "dmStatus", "dmStatusMessage"))
+
+
+def _check_db(resp: Any) -> None:
+    """Check the dbStatus envelope of a db_* service response."""
+    _check_status(_get(resp, "dbStatus", "dbStatusCode"), _get(resp, "dbStatus", "dbStatusMessage"))
+
+
 class IsdsClient:
     """Thin, typed wrapper over the ISDS SOAP services.
 
@@ -131,18 +143,13 @@ class IsdsClient:
         client = self._client(service)
         try:
             return getattr(client.service, operation)(**kwargs)
-        except Exception as exc:
-            from requests.exceptions import HTTPError
-
-            if (
-                isinstance(exc, HTTPError)
-                and exc.response is not None
-                and exc.response.status_code in (401, 403)
-            ):
+        except zeep_exceptions.TransportError as exc:
+            # zeep surfaces non-2xx HTTP responses as TransportError (it never
+            # raises requests.HTTPError from an operation call).
+            if exc.status_code in (401, 403):
                 raise IsdsAuthError(
-                    "ISDS rejected the credentials (HTTP "
-                    f"{exc.response.status_code}). Check ISDS_USERNAME/ISDS_PASSWORD "
-                    "and ISDS_ENV."
+                    f"ISDS rejected the credentials (HTTP {exc.status_code}). "
+                    "Check ISDS_USERNAME/ISDS_PASSWORD and ISDS_ENV."
                 ) from exc
             raise
 
@@ -151,9 +158,7 @@ class IsdsClient:
     def get_owner_info(self) -> OwnerInfo:
         """GetOwnerInfoFromLogin - info about the authenticated box. Safe."""
         resp = self._call("db_access", "GetOwnerInfoFromLogin")
-        _check_status(
-            _get(resp, "dbStatus", "dbStatusCode"), _get(resp, "dbStatus", "dbStatusMessage")
-        )
+        _check_db(resp)
         owner = resp["dbOwnerInfo"]
         return OwnerInfo(
             dbID=owner["dbID"],
@@ -167,21 +172,26 @@ class IsdsClient:
     def find_databox(self, query: str) -> list[DataBox]:
         """FindDataBox - search for a recipient box. Safe (no delivery trigger).
 
-        The query is matched against box ID, name and IČ depending on which
-        field is populated; here we search by box ID and by name/IČ heuristically.
+        Heuristics: an 8-digit query searches by IČ; a 7-char lowercase
+        alphanumeric query is first tried as a box ID and, if that finds
+        nothing, retried as a name (7-letter names are legal too); anything
+        else searches by name.
         """
-        owner_info: dict[str, Any] = {}
         q = query.strip()
-        if len(q) == 7 and q.isalnum():
-            owner_info["dbID"] = q
-        elif q.isdigit() and len(q) in (8,):
-            owner_info["ic"] = q
-        else:
-            owner_info["firmName"] = q
+        if re.fullmatch(r"\d{8}", q):
+            return self._find_databox_by({"ic": q})
+        if re.fullmatch(r"[a-z0-9]{7}", q):
+            try:
+                boxes = self._find_databox_by({"dbID": q})
+            except IsdsResponseError:
+                boxes = []
+            if boxes:
+                return boxes
+        return self._find_databox_by({"firmName": q})
+
+    def _find_databox_by(self, owner_info: dict[str, Any]) -> list[DataBox]:
         resp = self._call("db_search", "FindDataBox", dbOwnerInfo=owner_info)
-        _check_status(
-            _get(resp, "dbStatus", "dbStatusCode"), _get(resp, "dbStatus", "dbStatusMessage")
-        )
+        _check_db(resp)
         results = resp["dbResults"]
         if results is None:
             return []
@@ -194,14 +204,14 @@ class IsdsClient:
         self,
         from_time: datetime | None = None,
         to_time: datetime | None = None,
-        status_filter: int = 0x03FF,
+        status_filter: int = -1,
         offset: int = 1,
         limit: int = 100,
     ) -> list[MessageEnvelope]:
         """GetListOfSentMessages - list your OWN sent messages.
 
         Does not access the received store, so it does not trigger delivery of
-        received messages.
+        received messages. status_filter -1 means all message states.
         """
         resp = self._call(
             "dm_info",
@@ -222,18 +232,14 @@ class IsdsClient:
         not trigger delivery of your received messages.
         """
         resp = self._call("dm_info", "GetDeliveryInfo", dmID=message_id)
-        _check_status(
-            _get(resp, "dmStatus", "dmStatusCode"), _get(resp, "dmStatus", "dmStatusMessage")
-        )
+        _check_dm(resp)
         returned = resp["dmDelivery"]
         return _to_delivery_info(returned)
 
     def get_signed_delivery_info(self, message_id: str) -> bytes:
         """GetSignedDeliveryInfo - CMS-signed delivery receipt (ZFO). Returns raw bytes."""
         resp = self._call("dm_info", "GetSignedDeliveryInfo", dmID=message_id)
-        _check_status(
-            _get(resp, "dmStatus", "dmStatusCode"), _get(resp, "dmStatus", "dmStatusMessage")
-        )
+        _check_dm(resp)
         return bytes(resp["dmSignature"])
 
     # -- class B: triggers delivery (EV13) ------------------------------
@@ -242,7 +248,7 @@ class IsdsClient:
         self,
         from_time: datetime | None = None,
         to_time: datetime | None = None,
-        status_filter: int = 0x03FF,
+        status_filter: int = -1,
         offset: int = 1,
         limit: int = 100,
     ) -> list[MessageEnvelope]:
@@ -250,6 +256,7 @@ class IsdsClient:
 
         Reading the received list counts as a login via the application
         interface (EV13) and legally delivers all messages currently in the box.
+        status_filter -1 means all message states.
         """
         resp = self._call(
             "dm_info",
@@ -266,17 +273,13 @@ class IsdsClient:
     def signed_message_download(self, message_id: str) -> bytes:
         """SignedMessageDownload - DELIVERY-TRIGGERING. Returns the raw signed ZFO bytes."""
         resp = self._call("dm_operations", "SignedMessageDownload", dmID=message_id)
-        _check_status(
-            _get(resp, "dmStatus", "dmStatusCode"), _get(resp, "dmStatus", "dmStatusMessage")
-        )
+        _check_dm(resp)
         return bytes(resp["dmSignature"])
 
     def mark_message_as_downloaded(self, message_id: str) -> None:
         """MarkMessageAsDownloaded - flags a message as downloaded (removes the *new* flag)."""
         resp = self._call("dm_info", "MarkMessageAsDownloaded", dmID=message_id)
-        _check_status(
-            _get(resp, "dmStatus", "dmStatusCode"), _get(resp, "dmStatus", "dmStatusMessage")
-        )
+        _check_dm(resp)
 
     # -- class C: legal act (write) -------------------------------------
 
@@ -317,9 +320,7 @@ class IsdsClient:
             dmEnvelope=envelope,
             dmFiles=dm_files,
         )
-        _check_status(
-            _get(resp, "dmStatus", "dmStatusCode"), _get(resp, "dmStatus", "dmStatusMessage")
-        )
+        _check_dm(resp)
         return str(resp["dmID"])
 
 
@@ -378,7 +379,7 @@ def _record_to_envelope(rec: Any) -> MessageEnvelope:
 
 
 def _records_to_envelopes(resp: Any) -> list[MessageEnvelope]:
-    _check_status(_get(resp, "dmStatus", "dmStatusCode"), _get(resp, "dmStatus", "dmStatusMessage"))
+    _check_dm(resp)
     records = resp["dmRecords"]
     if records is None:
         return []

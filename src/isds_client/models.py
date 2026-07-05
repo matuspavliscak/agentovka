@@ -33,33 +33,6 @@ class MessageStatus(enum.IntEnum):
     IN_VAULT = 10  # v Datovém trezoru
 
 
-class DataBoxType(enum.IntEnum):
-    """dbType - type of a datová schránka (subset of the ISDS enumeration)."""
-
-    SYSTEM = 0
-    OVM = 10  # orgán veřejné moci
-    OVM_NOTAR = 11
-    OVM_EXEKUT = 12
-    OVM_REQ = 13
-    OVM_FO = 14
-    OVM_PFO = 15
-    OVM_PO = 16
-    PO = 20  # právnická osoba
-    PO_ZAK = 21
-    PO_REQ = 22
-    PFO = 30  # podnikající fyzická osoba
-    PFO_ADVOK = 31
-    PFO_DANPOR = 32
-    PFO_INSSPR = 33
-    PFO_AUDITOR = 34
-    PFO_ZNALEC = 35
-    PFO_TLUMOCNIK = 36
-    PFO_ARCH = 37
-    PFO_AIAT = 38
-    PFO_AZI = 39
-    FO = 40  # fyzická osoba
-
-
 class DataBox(BaseModel):
     """A datová schránka as returned by FindDataBox / ISDSSearch."""
 
@@ -148,5 +121,3 @@ class DeliveryInfo(BaseModel):
 
     envelope: MessageEnvelope
     events: list[DeliveryEvent] = []
-    signed_raw: bytes | None = None
-    """Raw signed doručenka (CMS/PKCS#7), suitable for archiving as evidence."""

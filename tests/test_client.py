@@ -198,3 +198,62 @@ def test_create_message_returns_id(client: IsdsClient) -> None:
         [{"file_name": "a.pdf", "mime_type": "application/pdf", "content": b"x"}],
     )
     assert new_id == "99999"
+
+
+def test_auth_error_from_transport_401(client: IsdsClient) -> None:
+    from zeep.exceptions import TransportError
+
+    from isds_client.errors import IsdsAuthError
+
+    class _AuthFailingOp:
+        def __call__(self, **kwargs: Any) -> Any:
+            raise TransportError("Unauthorized", status_code=401)
+
+    class _Svc:
+        GetOwnerInfoFromLogin = _AuthFailingOp()
+
+    class _Cl:
+        service = _Svc()
+
+    client._clients["db_access"] = _Cl()  # type: ignore[assignment]
+    with pytest.raises(IsdsAuthError):
+        client.get_owner_info()
+
+
+def test_find_databox_falls_back_to_name_for_7char_query(client: IsdsClient) -> None:
+    """A 7-char lowercase query that matches no box ID retries as a name."""
+    calls: list[dict[str, Any]] = []
+
+    class _Op:
+        def __call__(self, *, dbOwnerInfo: dict[str, Any]) -> Any:
+            calls.append(dbOwnerInfo)
+            if "dbID" in dbOwnerInfo:
+                return {
+                    "dbResults": None,
+                    "dbStatus": {"dbStatusCode": "0000", "dbStatusMessage": "OK"},
+                }
+            return {
+                "dbResults": {
+                    "dbOwnerInfo": [
+                        {
+                            "dbID": "zzzzzzz",
+                            "dbType": "PO",
+                            "firmName": "Tescoma",
+                            "ic": "11111111",
+                            "dbEffectiveOVM": False,
+                        }
+                    ]
+                },
+                "dbStatus": {"dbStatusCode": "0000", "dbStatusMessage": "OK"},
+            }
+
+    class _Svc:
+        FindDataBox = _Op()
+
+    class _Cl:
+        service = _Svc()
+
+    client._clients["db_search"] = _Cl()  # type: ignore[assignment]
+    boxes = client.find_databox("tescoma")
+    assert [c.get("dbID", c.get("firmName")) for c in calls] == ["tescoma", "tescoma"]
+    assert boxes[0].name == "Tescoma"

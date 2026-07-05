@@ -20,7 +20,6 @@ from isds_client.errors import (
 )
 from isds_client.models import (
     DataBox,
-    DataBoxType,
     DeliveryEvent,
     DeliveryInfo,
     DmFile,
@@ -31,7 +30,6 @@ from isds_client.models import (
 
 __all__ = [
     "DataBox",
-    "DataBoxType",
     "DeliveryEvent",
     "DeliveryInfo",
     "DmFile",

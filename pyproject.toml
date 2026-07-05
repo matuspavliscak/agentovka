@@ -20,6 +20,7 @@ classifiers = [
 ]
 dependencies = [
     "zeep>=4.2",
+    "requests>=2.31",
     "pydantic>=2.7",
     "mcp>=1.2",
     "holidays>=0.50",
@@ -42,7 +43,6 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.8",
     "mypy>=1.13",
-    "responses>=0.25",
 ]
 
 [build-system]

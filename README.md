@@ -11,7 +11,7 @@ with the legal semantics of the system treated as a first-class concern.
 > silently violates. Reading your inbox *legally delivers your mail* and starts
 > statutory deadlines; messages are *permanently deleted* after 90 days; sending
 > a message is a *legal act*. Agentovka encodes these facts into the tools
-> themselves. See **[docs/delivery-semantics.md](docs/delivery-semantics.md)** -
+> themselves. See **[docs/delivery-semantics.md](https://github.com/matuspavliscak/agentovka/blob/main/docs/delivery-semantics.md)** -
 > the heart of the project.
 
 [![CI](https://github.com/matuspavliscak/agentovka/actions/workflows/ci.yml/badge.svg)](https://github.com/matuspavliscak/agentovka/actions/workflows/ci.yml)
@@ -49,8 +49,8 @@ Two independent layers in one repository:
 
 | Layer | Package | What it is |
 |-------|---------|------------|
-| Client library | [`isds_client`](src/isds_client) | Pure Python client over the ISDS SOAP interface (via [`zeep`](https://docs.python-zeep.org), HTTP Basic auth over TLS). Typed [`pydantic`](https://docs.pydantic.dev) models, a ZFO/CMS parser, and a small CLI. Usable **standalone**, without MCP. |
-| MCP server | [`agentovka_mcp`](src/agentovka_mcp) | A thin MCP layer over the library, using the official MCP Python SDK (FastMCP), stdio transport. Implements the safety model and the local archive. |
+| Client library | [`isds_client`](https://github.com/matuspavliscak/agentovka/tree/main/src/isds_client) | Pure Python client over the ISDS SOAP interface (via [`zeep`](https://docs.python-zeep.org), HTTP Basic auth over TLS). Typed [`pydantic`](https://docs.pydantic.dev) models, a ZFO/CMS parser, and a small CLI. Usable **standalone**, without MCP. |
+| MCP server | [`agentovka_mcp`](https://github.com/matuspavliscak/agentovka/tree/main/src/agentovka_mcp) | A thin MCP layer over the library, using the official MCP Python SDK (FastMCP), stdio transport. Implements the safety model and the local archive. |
 
 ## The safety model
 
@@ -64,7 +64,7 @@ MCP annotations:
   read from the **local archive** only (no ISDS call).
 - `list_sent_messages()`, `get_delivery_receipt(id)` - sent messages and their
   delivery receipts. These do **not** touch the received store and so do **not**
-  trigger delivery (see [delivery-semantics](docs/delivery-semantics.md#which-operations-trigger-delivery)).
+  trigger delivery (see [delivery-semantics](https://github.com/matuspavliscak/agentovka/blob/main/docs/delivery-semantics.md#4-which-operations-trigger-delivery--kter%C3%A9-operace-spou%C5%A1t%C4%9Bj%C3%AD-doru%C4%8Den%C3%AD)).
 - `get_delivery_deadline(delivery_date)` - computes the fiction-of-delivery date
   (D+10, shifted to the next working day) using Czech public holidays.
 
@@ -131,7 +131,7 @@ Add to your MCP client config (e.g. `claude_desktop_config.json`):
 }
 ```
 
-See [`examples/`](examples) for ready-to-copy configs.
+See [`examples/`](https://github.com/matuspavliscak/agentovka/tree/main/examples) for ready-to-copy configs.
 
 ## Using the library standalone
 
@@ -167,7 +167,7 @@ uv run mypy
 AGENTOVKA_RUN_INTEGRATION=1 ISDS_USERNAME=... ISDS_PASSWORD=... uv run pytest -m integration
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](https://github.com/matuspavliscak/agentovka/blob/main/CONTRIBUTING.md).
 
 ## Prior art & credits
 
@@ -218,7 +218,7 @@ ISDS má právní sémantiku, kterou naivní klient tiše porušuje:
    tuto díru řeší lokální archiv Agentovky.
 4. **Odeslání je právní úkon.**
 
-Podrobně a se zdroji: **[docs/delivery-semantics.md](docs/delivery-semantics.md)**.
+Podrobně a se zdroji: **[docs/delivery-semantics.md](https://github.com/matuspavliscak/agentovka/blob/main/docs/delivery-semantics.md)**.
 
 ### Bezpečnostní model
 
@@ -230,7 +230,7 @@ Podrobně a se zdroji: **[docs/delivery-semantics.md](docs/delivery-semantics.md
 - **Třída C (právní úkon):** `send_message` - výchozí `dry_run=true`; skutečné
   odeslání vyžaduje `dry_run=false` **a** `AGENTOVKA_ALLOW_SEND=true`.
 
-Server nikdy sám nepolluje schránku. Vše jen na explicitní volání nástroje.
+Server se nikdy sám od sebe nedotazuje schránky. Vše jen na explicitní volání nástroje.
 
 ### Konfigurace
 

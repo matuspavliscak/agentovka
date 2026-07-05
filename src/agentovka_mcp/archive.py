@@ -40,11 +40,17 @@ CREATE TABLE IF NOT EXISTS messages (
     PRIMARY KEY (message_id, environment)
 );
 CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
-    message_id, subject, sender, recipient, body
+    message_id, environment UNINDEXED, subject, sender, recipient, body
 );
 """
 
 _TEXT_MIME = re.compile(r"^text/|[+/]xml$|^application/json$")
+
+
+def is_text_mime(mime_type: str | None) -> bool:
+    """True for MIME types whose content is meaningfully previewable as text."""
+    return bool(mime_type and _TEXT_MIME.search(mime_type))
+
 
 # A message_id becomes a filesystem directory name. It arrives from the ZFO /
 # network (whose CMS signature we deliberately do not verify) or from an MCP
@@ -67,7 +73,7 @@ def _attachment_text(files: list[DmFile]) -> str:
     """Best-effort plain text from attachments for the FTS index."""
     chunks: list[str] = []
     for f in files:
-        if f.content and f.mime_type and _TEXT_MIME.search(f.mime_type):
+        if f.content and is_text_mime(f.mime_type):
             try:
                 chunks.append(f.content.decode("utf-8", errors="replace")[:100_000])
             except Exception:
@@ -75,7 +81,7 @@ def _attachment_text(files: list[DmFile]) -> str:
     return "\n".join(chunks)
 
 
-def _safe_filename(name: str) -> str:
+def safe_filename(name: str) -> str:
     cleaned = re.sub(r"[^\w.\- ]", "_", name).strip()
     if cleaned in ("", ".", ".."):
         cleaned = "attachment.bin"
@@ -101,6 +107,7 @@ class Archive:
         self.environment = environment
         self.root.mkdir(parents=True, exist_ok=True)
         self._db = sqlite3.connect(self.root / "index.db")
+        self._db.row_factory = sqlite3.Row
         self._db.executescript(_SCHEMA)
         self._db.commit()
 
@@ -128,7 +135,7 @@ class Archive:
         for f in files:
             if f.content is None:
                 continue
-            target = att_dir / _safe_filename(f.file_name)
+            target = att_dir / safe_filename(f.file_name)
             target.write_bytes(f.content)
             saved_files.append(
                 {
@@ -152,7 +159,8 @@ class Archive:
 
         with self._db:
             self._db.execute(
-                "DELETE FROM messages_fts WHERE message_id = ?", (envelope.message_id,)
+                "DELETE FROM messages_fts WHERE message_id = ? AND environment = ?",
+                (message_id, self.environment),
             )
             self._db.execute(
                 """INSERT OR REPLACE INTO messages
@@ -172,10 +180,11 @@ class Archive:
                 ),
             )
             self._db.execute(
-                "INSERT INTO messages_fts (message_id, subject, sender, recipient, body)"
-                " VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO messages_fts (message_id, environment, subject, sender, recipient,"
+                " body) VALUES (?, ?, ?, ?, ?, ?)",
                 (
-                    envelope.message_id,
+                    message_id,
+                    self.environment,
                     envelope.subject or "",
                     envelope.sender_name or "",
                     envelope.recipient_name or "",
@@ -200,7 +209,6 @@ class Archive:
         )
 
     def list_messages(self, limit: int = 100) -> list[ArchivedMessage]:
-        self._db.row_factory = sqlite3.Row
         rows = self._db.execute(
             "SELECT * FROM messages WHERE environment = ? ORDER BY delivery_time DESC LIMIT ?",
             (self.environment, limit),
@@ -208,15 +216,21 @@ class Archive:
         return [self._row_to_message(r) for r in rows]
 
     def search(self, query: str, limit: int = 50) -> list[ArchivedMessage]:
-        """Full-text search over subject/sender/recipient/attachment text."""
-        self._db.row_factory = sqlite3.Row
-        rows = self._db.execute(
-            """SELECT m.* FROM messages_fts f
-               JOIN messages m ON m.message_id = f.message_id AND m.environment = ?
-               WHERE messages_fts MATCH ?
-               ORDER BY rank LIMIT ?""",
-            (self.environment, query, limit),
-        ).fetchall()
+        """Full-text search over subject/sender/recipient/attachment text.
+
+        The query is passed to FTS5 as-is first (so advanced syntax works); if
+        FTS5 rejects it (slashes, colons, unbalanced quotes - e.g. a case
+        number like "123/2026"), it is retried as a quoted literal phrase.
+        """
+        sql = """SELECT m.* FROM messages_fts f
+               JOIN messages m ON m.message_id = f.message_id AND m.environment = f.environment
+               WHERE messages_fts MATCH ? AND f.environment = ?
+               ORDER BY rank LIMIT ?"""
+        try:
+            rows = self._db.execute(sql, (query, self.environment, limit)).fetchall()
+        except sqlite3.OperationalError:
+            phrase = '"' + query.replace('"', '""') + '"'
+            rows = self._db.execute(sql, (phrase, self.environment, limit)).fetchall()
         return [self._row_to_message(r) for r in rows]
 
     def get(self, message_id: str) -> dict[str, Any] | None:
