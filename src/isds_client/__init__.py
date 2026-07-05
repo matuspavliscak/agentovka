@@ -1,4 +1,4 @@
-"""isds_client — a standalone Python client for the Czech ISDS (datové schránky) SOAP API.
+"""isds_client - a standalone Python client for the Czech ISDS (datové schránky) SOAP API.
 
 This package is usable without the MCP layer:
 

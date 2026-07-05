@@ -5,9 +5,9 @@ občana auto-archiving is known to miss messages delivered by fiction. This
 archive keeps everything that passes through ``download_message``:
 
     <archive_dir>/<environment>/<message_id>/
-        message.zfo          — original signed message, verbatim
-        metadata.json        — envelope, timestamps, sha256 of the ZFO
-        attachments/<name>   — extracted files
+        message.zfo          - original signed message, verbatim
+        metadata.json        - envelope, timestamps, sha256 of the ZFO
+        attachments/<name>   - extracted files
 
 plus an SQLite database (index.db) with an FTS5 full-text index over subject,
 sender, recipient and extracted attachment text.

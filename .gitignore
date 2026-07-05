@@ -17,7 +17,7 @@ htmlcov/
 # uv
 uv.lock
 
-# Local archive / secrets — never commit databox contents or credentials
+# Local archive / secrets - never commit databox contents or credentials
 .agentovka/
 *.zfo
 .env

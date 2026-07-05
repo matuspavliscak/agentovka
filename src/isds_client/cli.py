@@ -1,4 +1,4 @@
-"""Minimal CLI for isds_client — useful for manual testing against the test env.
+"""Minimal CLI for isds_client - useful for manual testing against the test env.
 
 Reads credentials from the environment (ISDS_USERNAME, ISDS_PASSWORD, ISDS_ENV)
 exactly like the MCP server, so it never takes a password on the command line.

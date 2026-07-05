@@ -2,7 +2,7 @@
 
 Thanks for your interest! Agentovka aims to be a correct, safety-first bridge
 between AI agents and the Czech ISDS system. Contributions of code, tests,
-documentation and — especially — corrections to the legal-semantics
+documentation and - especially - corrections to the legal-semantics
 documentation are all welcome.
 
 ## Ground rules

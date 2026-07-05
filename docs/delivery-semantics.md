@@ -22,7 +22,7 @@ ISDS distinguishes two distinct moments in a message's life:
 
 Legal delivery happens in one of two ways:
 
-1. **By login (doručení přihlášením).** An authorized person logs in — via the
+1. **By login (doručení přihlášením).** An authorized person logs in - via the
    web portal **or via the application interface (API)**. The moment they do,
    *every* message currently sitting in the box (in the *dodaná* state) becomes
    legally delivered.
@@ -60,7 +60,7 @@ Sources:
 > definition, never opened. It is still subject to the 90-day deletion (§3), and
 > the Portál občana auto-archiving is reported not to capture fiction-delivered
 > messages. Downloading such a message *does* deliver it (if not already
-> delivered by fiction) — so Agentovka's archive is the durable copy.
+> delivered by fiction) - so Agentovka's archive is the durable copy.
 
 ## 3. Devadesátidenní mazání / 90-day deletion
 
@@ -86,13 +86,13 @@ This is the crux of the safety model. **Delivery is triggered by accessing the
 
 | Operation | ISDS WS | Triggers delivery? | Agentovka class |
 |-----------|---------|--------------------|-----------------|
-| `GetListOfReceivedMessages` | dm_info (dx) | **YES** — counts as a login (EV13); delivers all *dodaná* messages | **B** |
-| `MessageEnvelopeDownload` / `SignedMessageDownload` / `MessageDownload` | dm_info / dm_operations | **YES** — downloading a received message delivers it | **B** |
-| `GetListOfSentMessages` | dm_info (dx) | No — operates on your *sent* messages | A |
-| `GetDeliveryInfo` / `GetSignedDeliveryInfo` | dm_info (dx) | No — reads a delivery receipt; does not access the received store | A |
-| `FindDataBox` | db_search (df) | No — directory lookup | A |
-| `GetOwnerInfoFromLogin` | db_access (DsManage) | No — box metadata | A |
-| `CreateMessage` | dm_operations (dz) | N/A — sends (legal act) | C |
+| `GetListOfReceivedMessages` | dm_info (dx) | **YES** - counts as a login (EV13); delivers all *dodaná* messages | **B** |
+| `MessageEnvelopeDownload` / `SignedMessageDownload` / `MessageDownload` | dm_info / dm_operations | **YES** - downloading a received message delivers it | **B** |
+| `GetListOfSentMessages` | dm_info (dx) | No - operates on your *sent* messages | A |
+| `GetDeliveryInfo` / `GetSignedDeliveryInfo` | dm_info (dx) | No - reads a delivery receipt; does not access the received store | A |
+| `FindDataBox` | db_search (df) | No - directory lookup | A |
+| `GetOwnerInfoFromLogin` | db_access (DsManage) | No - box metadata | A |
+| `CreateMessage` | dm_operations (dz) | N/A - sends (legal act) | C |
 
 The reasoning: legal delivery is tied to an **authorized person accessing the
 delivered document**. Listing your own sent messages or reading a delivery
@@ -103,14 +103,14 @@ document, so it does not start anyone's deadlines. Listing or downloading
 > **Conservative stance.** Agentovka treats `list_received_messages` and any
 > download of a received message as delivery-triggering (class B) and blocks them
 > behind `acknowledge_delivery_trigger=true`. If you have an authoritative source
-> that narrows or widens this set, please open an issue — the classification is
+> that narrows or widens this set, please open an issue - the classification is
 > documented here precisely so it can be reviewed.
 
 Sources:
-- Provozní řád ISDS — *Aplikační rozhraní*, description of
+- Provozní řád ISDS - *Aplikační rozhraní*, description of
   `GetListOfReceivedMessages` and message-download operations
   (mojedatovaschranka.cz).
-- poradnaisds.cz — knowledge base on delivery events and API access.
+- poradnaisds.cz - knowledge base on delivery events and API access.
 
 ## 5. Event codes / Kódy událostí (doručenka)
 
@@ -119,19 +119,19 @@ what happened to a message. Common codes:
 
 | Code | Meaning |
 |------|---------|
-| EV0 | Doručení fikcí — delivery by fiction (10-day period elapsed) |
-| EV5 | Datová zpráva dodána do schránky — delivered to the box (dodání) |
-| EV11 | Přihlášení oprávněné osoby — login of an authorized person |
+| EV0 | Doručení fikcí - delivery by fiction (10-day period elapsed) |
+| EV5 | Datová zpráva dodána do schránky - delivered to the box (dodání) |
+| EV11 | Přihlášení oprávněné osoby - login of an authorized person |
 | EV12 | Doručení přihlášením osoby oprávněné číst tuto zprávu |
-| EV13 | Přihlášení/přístup elektronické aplikace (aplikační rozhraní, systémový certifikát) — delivery caused by API access |
+| EV13 | Přihlášení/přístup elektronické aplikace (aplikační rozhraní, systémový certifikát) - delivery caused by API access |
 
 `EV13` is the one that matters most here: it is the event recorded when a message
 is delivered because an application (API) accessed the box. This is why reading
 your received list via Agentovka is a delivery-triggering, deadline-starting act.
 
 Sources:
-- poradnaisds.cz — list of doručenka events.
-- Provozní řád ISDS — doručenka / delivery receipt structure.
+- poradnaisds.cz - list of doručenka events.
+- Provozní řád ISDS - doručenka / delivery receipt structure.
 
 ## 6. Application interface access / Přístup přes aplikační rozhraní
 
@@ -147,7 +147,7 @@ Service path suffixes: `dz` = dm_operations, `dx` = dm_info, `df` = db_search,
 `DsManage` = db_access / db_manipulations.
 
 Sources:
-- Provozní řád ISDS — *Aplikační rozhraní* (mojedatovaschranka.cz).
+- Provozní řád ISDS - *Aplikační rozhraní* (mojedatovaschranka.cz).
 - ISDS help, "Vyzkoušejte si Datovou schránku":
   <https://info.mojedatovaschranka.cz/info/cs/95.html>
 

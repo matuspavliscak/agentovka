@@ -1,4 +1,4 @@
-"""Configuration — exclusively from environment variables.
+"""Configuration - exclusively from environment variables.
 
 Credentials must never be passed as MCP tool parameters: tool arguments flow
 through the LLM context and would leak the password. The server reads them

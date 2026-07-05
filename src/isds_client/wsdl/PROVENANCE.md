@@ -26,8 +26,8 @@ files for use with the interface. dslib is credited in the project README.
 
 ## Notes on licensing
 
-WSDL/XSD files are **interface descriptions** — the published, machine-readable
-contract of a public e-government service — rather than an authored software
+WSDL/XSD files are **interface descriptions** - the published, machine-readable
+contract of a public e-government service - rather than an authored software
 program. They are used here only to let the SOAP client speak the ISDS
 protocol. If you need an unambiguous upstream copy, download the current
 versions directly from the *Provozní řád ISDS* attachments on

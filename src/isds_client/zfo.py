@@ -1,7 +1,7 @@
 """Parser for ZFO files (signed ISDS data messages).
 
 A ZFO file is a DER-encoded CMS/PKCS#7 SignedData structure (RFC 5652) whose
-encapsulated content is the XML of the ISDS SOAP response — either a signed
+encapsulated content is the XML of the ISDS SOAP response - either a signed
 data message (``MessageDownloadResponse``/``SignedMessageDownloadResponse``
 body containing ``dmReturnedMessage``) or a signed delivery receipt
 (``GetDeliveryInfoResponse`` containing ``dmDelivery``).
@@ -12,7 +12,7 @@ official Datovka desktop application (CZ.NIC) and libisds/libdatovka, whose
 handling of the format this implementation follows.
 
 This module extracts the inner XML, the message envelope metadata, attachments
-(base64-decoded) and delivery events. It does NOT validate the CMS signature —
+(base64-decoded) and delivery events. It does NOT validate the CMS signature -
 the ZFO is preserved verbatim in the archive so the signature can always be
 verified later by external tools.
 """
@@ -60,7 +60,7 @@ def extract_xml_from_cms(data: bytes) -> bytes:
     """
     der = data
     if not der.lstrip().startswith(b"\x30"):
-        # Not DER — try base64 (possibly with whitespace/newlines).
+        # Not DER - try base64 (possibly with whitespace/newlines).
         try:
             der = base64.b64decode(re.sub(rb"\s+", b"", data), validate=True)
         except Exception as exc:
@@ -201,7 +201,7 @@ def parse_zfo(data: bytes) -> ParsedZfo:
 
     if not envelope.message_id:
         # dmID is an element inside dmDm in download responses; in some receipt
-        # variants it sits on the wrapping element — try a global lookup.
+        # variants it sits on the wrapping element - try a global lookup.
         dm_id_el = _find_first(root, "dmID")
         if dm_id_el is not None and dm_id_el.text:
             envelope = envelope.model_copy(update={"message_id": dm_id_el.text})

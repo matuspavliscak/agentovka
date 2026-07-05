@@ -4,14 +4,14 @@
 
 Agentovka is an [MCP](https://modelcontextprotocol.io) server that lets AI agents
 (Claude Desktop, Claude Code, any MCP client) work with a Czech **data box**
-(datová schránka) through the official ISDS application interface — safely and
+(datová schránka) through the official ISDS application interface - safely and
 with the legal semantics of the system treated as a first-class concern.
 
 > **Not a thin SOAP wrapper.** ISDS has legal semantics that a naive client
 > silently violates. Reading your inbox *legally delivers your mail* and starts
 > statutory deadlines; messages are *permanently deleted* after 90 days; sending
 > a message is a *legal act*. Agentovka encodes these facts into the tools
-> themselves. See **[docs/delivery-semantics.md](docs/delivery-semantics.md)** —
+> themselves. See **[docs/delivery-semantics.md](docs/delivery-semantics.md)** -
 > the heart of the project.
 
 [![CI](https://github.com/matuspavliscak/agentovka/actions/workflows/ci.yml/badge.svg)](https://github.com/matuspavliscak/agentovka/actions/workflows/ci.yml)
@@ -26,8 +26,8 @@ with their login credentials, without prior registration. But the API mirrors
 the legal machinery of the system, and an agent that treats a data box like an
 IMAP inbox will cause real legal consequences:
 
-1. **Reading triggers delivery.** Listing received messages — whether by logging
-   in or via the API (delivery event **EV13**) — marks *all* messages in the box
+1. **Reading triggers delivery.** Listing received messages - whether by logging
+   in or via the API (delivery event **EV13**) - marks *all* messages in the box
    as legally delivered (doručeno) and starts statutory deadlines (appeals,
    etc.). There is no consequence-free "peek".
 2. **Fiction of delivery.** If nobody logs in, a message is deemed delivered on
@@ -36,7 +36,7 @@ IMAP inbox will cause real legal consequences:
    working day.
 3. **90-day deletion.** Messages are permanently deleted **90 days after
    delivery**. The Portál občana auto-archiving notably **fails for messages
-   delivered by fiction** — a real gap that Agentovka's local archive closes.
+   delivered by fiction** - a real gap that Agentovka's local archive closes.
 4. **Sending is a legal act** (a submission to a public authority, a
    private-law act).
 
@@ -57,18 +57,18 @@ Two independent layers in one repository:
 Tools are split into three classes, reflected in their names, descriptions and
 MCP annotations:
 
-### Class A — safe, no legal consequences (`readOnlyHint`)
-- `search_databox(query)` — find a recipient's box (ID, name, type).
-- `get_databox_info()` — info about your own box.
-- `list_archived_messages()`, `read_archived_message(id)`, `search_archive(q)` —
+### Class A - safe, no legal consequences (`readOnlyHint`)
+- `search_databox(query)` - find a recipient's box (ID, name, type).
+- `get_databox_info()` - info about your own box.
+- `list_archived_messages()`, `read_archived_message(id)`, `search_archive(q)` -
   read from the **local archive** only (no ISDS call).
-- `list_sent_messages()`, `get_delivery_receipt(id)` — sent messages and their
+- `list_sent_messages()`, `get_delivery_receipt(id)` - sent messages and their
   delivery receipts. These do **not** touch the received store and so do **not**
   trigger delivery (see [delivery-semantics](docs/delivery-semantics.md#which-operations-trigger-delivery)).
-- `get_delivery_deadline(delivery_date)` — computes the fiction-of-delivery date
+- `get_delivery_deadline(delivery_date)` - computes the fiction-of-delivery date
   (D+10, shifted to the next working day) using Czech public holidays.
 
-### Class B — triggers delivery (event EV13)
+### Class B - triggers delivery (event EV13)
 - `list_received_messages(...)`, `download_message(id)`.
 - Each requires a mandatory `acknowledge_delivery_trigger: bool`. Without `true`
   the tool returns an error explaining the legal consequences instead of acting.
@@ -76,12 +76,12 @@ MCP annotations:
   archive, extracts attachments (the ZFO is a PKCS#7/CMS envelope), and returns
   metadata plus text content.
 
-### Class C — legal act: sending (`destructiveHint`)
+### Class C - legal act: sending (`destructiveHint`)
 - `send_message(recipient_id, subject, attachments, dry_run=true)`.
 - Defaults to `dry_run=true` (returns a preview). Actually sending requires
   `dry_run=false` **and** `AGENTOVKA_ALLOW_SEND=true` in the environment.
 
-**The server never polls the mailbox on its own** — no background jobs, no
+**The server never polls the mailbox on its own** - no background jobs, no
 scheduler. Every ISDS call happens only in response to an explicit tool call.
 
 ## Installation & configuration
@@ -94,7 +94,7 @@ uvx agentovka        # once published to PyPI
 uv run agentovka
 ```
 
-All configuration is via environment variables — **credentials are never
+All configuration is via environment variables - **credentials are never
 accepted as tool parameters** (they would leak into the LLM context):
 
 ```bash
@@ -105,7 +105,7 @@ AGENTOVKA_ARCHIVE_DIR=~/.agentovka/archive
 AGENTOVKA_ALLOW_SEND=false    # default: sending disabled
 ```
 
-`ISDS_ENV=test` is the default on purpose — nobody should accidentally deliver
+`ISDS_ENV=test` is the default on purpose - nobody should accidentally deliver
 their production mail while trying the server out. The test environment is free:
 create a test box at **[datovka-test.gov.cz](https://www.datovka-test.gov.cz)**
 (SOAP host `ws1.czebox.cz`).
@@ -182,10 +182,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## ⚠️ Disclaimer
 
-**Agentovka is an independent open-source project.** It is **not affiliated with,
-endorsed by, or connected to** CZ.NIC (author of the *Datovka* application), the
-Digitální a informační agentura (DIA), or any operator of ISDS. The name
-*Agentovka* is a play on *datovka* (data box) — an **agent's** data box.
+**Agentovka is an independent open-source project.** The name *Agentovka* is a
+play on *datovka* (data box): an **agent's** data box.
 
 **This project is not a legal service.** The information about delivery, fiction
 of delivery, deadlines and archiving is provided for engineering context and may
@@ -203,20 +201,20 @@ your reads set in motion.
 
 **Agentovka** je MCP server, který umožní AI agentům (Claude Desktop, Claude
 Code, libovolný MCP klient) pracovat s českou **datovou schránkou** přes oficiální
-aplikační rozhraní ISDS — bezpečně a s ohledem na právní sémantiku systému.
+aplikační rozhraní ISDS - bezpečně a s ohledem na právní sémantiku systému.
 
 ### Proč to není jen tenký SOAP wrapper
 
 ISDS má právní sémantiku, kterou naivní klient tiše porušuje:
 
 1. **Čtení spouští doručení.** Načtení seznamu dodaných zpráv (přihlášením i přes
-   API — doručenkový kód **EV13**) způsobí, že se všechny dodané zprávy považují
+   API - doručenkový kód **EV13**) způsobí, že se všechny dodané zprávy považují
    za **doručené** a začnou běžet zákonné lhůty. „Peek" bez následků neexistuje.
 2. **Fikce doručení.** Nepřihlásí-li se nikdo, je zpráva doručena **10. dnem** od
    dodání (§ 17 odst. 4 zák. č. 300/2008 Sb.); padne-li 10. den na víkend/svátek,
    nastává fikce nejbližší pracovní den.
 3. **Mazání po 90 dnech.** Zprávy se **90 dní po doručení** trvale mažou.
-   Automatická archivace Portálu občana navíc **nezvládá zprávy doručené fikcí** —
+   Automatická archivace Portálu občana navíc **nezvládá zprávy doručené fikcí** -
    tuto díru řeší lokální archiv Agentovky.
 4. **Odeslání je právní úkon.**
 
@@ -227,9 +225,9 @@ Podrobně a se zdroji: **[docs/delivery-semantics.md](docs/delivery-semantics.md
 - **Třída A (bezpečné):** `search_databox`, `get_databox_info`, čtení lokálního
   archivu, `list_sent_messages`, `get_delivery_receipt`, `get_delivery_deadline`.
 - **Třída B (spouští doručení, EV13):** `list_received_messages`,
-  `download_message` — vyžadují parametr `acknowledge_delivery_trigger=true`, bez
+  `download_message` - vyžadují parametr `acknowledge_delivery_trigger=true`, bez
   něj vrátí chybu s vysvětlením právních následků.
-- **Třída C (právní úkon):** `send_message` — výchozí `dry_run=true`; skutečné
+- **Třída C (právní úkon):** `send_message` - výchozí `dry_run=true`; skutečné
   odeslání vyžaduje `dry_run=false` **a** `AGENTOVKA_ALLOW_SEND=true`.
 
 Server nikdy sám nepolluje schránku. Vše jen na explicitní volání nástroje.
@@ -243,6 +241,5 @@ prvek. Testovací schránku zdarma získáte na
 
 ### Upozornění
 
-Agentovka je nezávislý open-source projekt, **není spojen s CZ.NIC** (aplikace
-*Datovka*) **ani s DIA**. Název je odvozenina slova *datovka*. **Projekt není
-právní služba** — uvedené informace nejsou právní radou.
+Agentovka je nezávislý open-source projekt. Název je odvozenina slova *datovka*.
+**Projekt není právní služba** - uvedené informace nejsou právní radou.

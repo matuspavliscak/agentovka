@@ -3,19 +3,19 @@
 A safety-first MCP wrapper over :mod:`isds_client`. Tools are grouped into three
 classes, reflected in their names, descriptions and annotations:
 
-  Class A — safe, no legal consequences (searching, own-box info, local archive,
+  Class A - safe, no legal consequences (searching, own-box info, local archive,
             deadline arithmetic). readOnlyHint = True.
-  Class B — DELIVERY-TRIGGERING. Reading the received list or downloading a
+  Class B - DELIVERY-TRIGGERING. Reading the received list or downloading a
             received message counts as a login via the application interface
             (event EV13) and legally delivers every message in the box, starting
             statutory deadlines. These tools require the caller to pass
             acknowledge_delivery_trigger=True.
-  Class C — legal act: sending a data message. Guarded by dry_run (default True)
+  Class C - legal act: sending a data message. Guarded by dry_run (default True)
             AND the AGENTOVKA_ALLOW_SEND=true environment variable.
 
 Configuration comes only from environment variables (see agentovka_mcp.config);
 credentials are never accepted as tool parameters. The server never polls the
-mailbox on its own — every ISDS call happens only in response to a tool call.
+mailbox on its own - every ISDS call happens only in response to a tool call.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ from isds_client.zfo import ZfoParseError, parse_zfo
 
 _DELIVERY_WARNING = (
     "POZOR / WARNING: Volání tohoto nástroje se v ISDS počítá jako přihlášení a "
-    "způsobí DORUČENÍ všech dodaných zpráv (kód EV13) — začnou běžet zákonné "
+    "způsobí DORUČENÍ všech dodaných zpráv (kód EV13) - začnou běžet zákonné "
     "lhůty (odvolání atd.). Calling this tool counts as a login to ISDS and "
     "legally DELIVERS all messages currently in the box (event EV13); statutory "
     "deadlines start running. There is no way to peek without this effect."
@@ -49,7 +49,7 @@ mcp = FastMCP(
         "Agentovka provides agentic access to Czech data boxes (datové schránky / "
         "ISDS). Tools are grouped by legal impact. Class A tools are safe. Class B "
         "tools (list_received_messages, download_message) TRIGGER LEGAL DELIVERY of "
-        "all messages in the box and require acknowledge_delivery_trigger=True — "
+        "all messages in the box and require acknowledge_delivery_trigger=True - "
         "never call them to merely 'check' for mail unless the user understands "
         "that deadlines will start. Class C (send_message) performs a legal act "
         "and is disabled unless the operator sets AGENTOVKA_ALLOW_SEND=true. "
@@ -92,7 +92,7 @@ def _envelope_dict(env: Any) -> dict[str, Any]:
 
 
 # ======================================================================
-# Class A — safe (no legal consequences)
+# Class A - safe (no legal consequences)
 # ======================================================================
 
 
@@ -215,14 +215,14 @@ def get_delivery_deadline(
 
 
 # ======================================================================
-# Class B — DELIVERY-TRIGGERING (event EV13)
+# Class B - DELIVERY-TRIGGERING (event EV13)
 # ======================================================================
 
 
 @mcp.tool(
     annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=True),
     description=(
-        "TŘÍDA B — SPOUŠTÍ DORUČENÍ. " + _DELIVERY_WARNING + " Lists messages "
+        "TŘÍDA B - SPOUŠTÍ DORUČENÍ. " + _DELIVERY_WARNING + " Lists messages "
         "delivered to your box from ISDS. Requires acknowledge_delivery_trigger=True."
     ),
 )
@@ -261,7 +261,7 @@ def list_received_messages(
 @mcp.tool(
     annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=True),
     description=(
-        "TŘÍDA B — SPOUŠTÍ DORUČENÍ. " + _DELIVERY_WARNING + " Downloads the signed "
+        "TŘÍDA B - SPOUŠTÍ DORUČENÍ. " + _DELIVERY_WARNING + " Downloads the signed "
         "message (ZFO) from ISDS, stores it in the local archive, extracts "
         "attachments, and returns metadata + text. Requires acknowledge_delivery_trigger=True."
     ),
@@ -328,7 +328,7 @@ def download_message(
 
 
 # ======================================================================
-# Class A/B boundary — sent messages & delivery receipts
+# Class A/B boundary - sent messages & delivery receipts
 # ======================================================================
 # Listing SENT messages and reading delivery receipts (doručenky) of one's own
 # sent messages do NOT access the received store and therefore do NOT trigger
@@ -381,7 +381,7 @@ def get_delivery_receipt(
 
 
 # ======================================================================
-# Class C — legal act: sending a message
+# Class C - legal act: sending a message
 # ======================================================================
 
 
@@ -390,7 +390,7 @@ def get_delivery_receipt(
         readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=True
     ),
     description=(
-        "TŘÍDA C — PRÁVNÍ ÚKON. Odeslání datové zprávy je podání/soukromoprávní "
+        "TŘÍDA C - PRÁVNÍ ÚKON. Odeslání datové zprávy je podání/soukromoprávní "
         "jednání. Ve výchozím stavu pouze náhled (dry_run=true). Skutečné odeslání "
         "vyžaduje dry_run=false A proměnnou prostředí AGENTOVKA_ALLOW_SEND=true. "
         "Sends a data message (a legal act). Defaults to a preview; real sending "

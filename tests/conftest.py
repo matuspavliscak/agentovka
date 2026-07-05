@@ -1,4 +1,4 @@
-"""Shared test fixtures — most importantly a synthetic ZFO builder.
+"""Shared test fixtures - most importantly a synthetic ZFO builder.
 
 Real ZFO files contain personal data and qualified signatures, so tests build
 a structurally equivalent CMS SignedData envelope around hand-written ISDS

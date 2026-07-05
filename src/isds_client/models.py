@@ -14,10 +14,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class MessageStatus(enum.IntEnum):
-    """dmMessageStatus — lifecycle state of a data message.
+    """dmMessageStatus - lifecycle state of a data message.
 
     The delivery-relevant distinction is DELIVERED_TO_BOX (dodaná, not yet
-    legally delivered) vs DELIVERED_BY_FICTION / DELIVERED_BY_LOGIN (doručená —
+    legally delivered) vs DELIVERED_BY_FICTION / DELIVERED_BY_LOGIN (doručená -
     legal deadlines are running).
     """
 
@@ -34,7 +34,7 @@ class MessageStatus(enum.IntEnum):
 
 
 class DataBoxType(enum.IntEnum):
-    """dbType — type of a data box (subset of the ISDS enumeration)."""
+    """dbType - type of a data box (subset of the ISDS enumeration)."""
 
     SYSTEM = 0
     OVM = 10  # orgán veřejné moci
@@ -100,7 +100,7 @@ class DmFile(BaseModel):
 
 
 class MessageEnvelope(BaseModel):
-    """Envelope (obálka) of a data message — metadata without attachments."""
+    """Envelope (obálka) of a data message - metadata without attachments."""
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -116,7 +116,7 @@ class MessageEnvelope(BaseModel):
     delivery_time: datetime | None = Field(default=None, alias="dmDeliveryTime")
     """Time the message was DODÁNA (delivered to the box, not yet legally delivered)."""
     acceptance_time: datetime | None = Field(default=None, alias="dmAcceptanceTime")
-    """Time the message was DORUČENA (legally delivered — by login or by fiction)."""
+    """Time the message was DORUČENA (legally delivered - by login or by fiction)."""
     attachment_size_kb: int | None = Field(default=None, alias="dmAttachmentSize")
     personal_delivery: bool | None = Field(default=None, alias="dmPersonalDelivery")
     sender_ref_number: str | None = Field(default=None, alias="dmSenderRefNumber")
@@ -130,11 +130,11 @@ class DeliveryEvent(BaseModel):
     """One event from a delivery receipt (doručenka).
 
     Event descriptions carry EV* codes, e.g.:
-      EV0  — delivery by fiction time reached (doručení fikcí)
-      EV5  — delivery/acceptance (doručenka)
-      EV11 — login of an authorized person (přihlášení)
-      EV12 — delivery by login of a person authorized to read this message
-      EV13 — delivery caused by API/spisová služba access (přístup aplikací)
+      EV0  - delivery by fiction time reached (doručení fikcí)
+      EV5  - delivery/acceptance (doručenka)
+      EV11 - login of an authorized person (přihlášení)
+      EV12 - delivery by login of a person authorized to read this message
+      EV13 - delivery caused by API/spisová služba access (přístup aplikací)
     """
 
     time: datetime | None = Field(default=None, alias="dmEventTime")

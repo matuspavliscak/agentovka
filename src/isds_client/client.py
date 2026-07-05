@@ -9,13 +9,13 @@ Authentication is HTTP Basic over TLS ("login by username and password"), which
 per the ISDS Provozní řád (Aplikační rozhraní) any box user may use without
 prior registration.
 
-DELIVERY SEMANTICS — read docs/delivery-semantics.md. Operations that touch the
+DELIVERY SEMANTICS - read docs/delivery-semantics.md. Operations that touch the
 *received* message store legally deliver everything in the box:
 
   * ``get_list_of_received_messages`` and any download of a received message
     (``message_envelope_download``, ``message_download``, ``signed_message_download``)
     count as a login via the application interface (event EV13) and mark all
-    "delivered to box" (dodaná) messages as legally delivered (doručená) —
+    "delivered to box" (dodaná) messages as legally delivered (doručená) -
     statutory deadlines start running.
 
 Operations on *sent* messages and on delivery receipts of one's own sent
@@ -149,7 +149,7 @@ class IsdsClient:
     # -- class A: no legal consequences ---------------------------------
 
     def get_owner_info(self) -> OwnerInfo:
-        """GetOwnerInfoFromLogin — info about the authenticated box. Safe."""
+        """GetOwnerInfoFromLogin - info about the authenticated box. Safe."""
         resp = self._call("db_access", "GetOwnerInfoFromLogin")
         _check_status(
             _get(resp, "dbStatus", "dbStatusCode"), _get(resp, "dbStatus", "dbStatusMessage")
@@ -165,7 +165,7 @@ class IsdsClient:
         )
 
     def find_databox(self, query: str) -> list[DataBox]:
-        """FindDataBox — search for a recipient box. Safe (no delivery trigger).
+        """FindDataBox - search for a recipient box. Safe (no delivery trigger).
 
         The query is matched against box ID, name and IČ depending on which
         field is populated; here we search by box ID and by name/IČ heuristically.
@@ -198,7 +198,7 @@ class IsdsClient:
         offset: int = 1,
         limit: int = 100,
     ) -> list[MessageEnvelope]:
-        """GetListOfSentMessages — list your OWN sent messages.
+        """GetListOfSentMessages - list your OWN sent messages.
 
         Does not access the received store, so it does not trigger delivery of
         received messages.
@@ -216,7 +216,7 @@ class IsdsClient:
         return _records_to_envelopes(resp)
 
     def get_delivery_info(self, message_id: str) -> DeliveryInfo:
-        """GetDeliveryInfo — delivery receipt (doručenka) of a message. Not signed.
+        """GetDeliveryInfo - delivery receipt (doručenka) of a message. Not signed.
 
         For sent messages this reports the recipient's delivery events and does
         not trigger delivery of your received messages.
@@ -229,7 +229,7 @@ class IsdsClient:
         return _to_delivery_info(returned)
 
     def get_signed_delivery_info(self, message_id: str) -> bytes:
-        """GetSignedDeliveryInfo — CMS-signed delivery receipt (ZFO). Returns raw bytes."""
+        """GetSignedDeliveryInfo - CMS-signed delivery receipt (ZFO). Returns raw bytes."""
         resp = self._call("dm_info", "GetSignedDeliveryInfo", dmID=message_id)
         _check_status(
             _get(resp, "dmStatus", "dmStatusCode"), _get(resp, "dmStatus", "dmStatusMessage")
@@ -246,7 +246,7 @@ class IsdsClient:
         offset: int = 1,
         limit: int = 100,
     ) -> list[MessageEnvelope]:
-        """GetListOfReceivedMessages — DELIVERY-TRIGGERING.
+        """GetListOfReceivedMessages - DELIVERY-TRIGGERING.
 
         Reading the received list counts as a login via the application
         interface (EV13) and legally delivers all messages currently in the box.
@@ -264,7 +264,7 @@ class IsdsClient:
         return _records_to_envelopes(resp)
 
     def signed_message_download(self, message_id: str) -> bytes:
-        """SignedMessageDownload — DELIVERY-TRIGGERING. Returns the raw signed ZFO bytes."""
+        """SignedMessageDownload - DELIVERY-TRIGGERING. Returns the raw signed ZFO bytes."""
         resp = self._call("dm_operations", "SignedMessageDownload", dmID=message_id)
         _check_status(
             _get(resp, "dmStatus", "dmStatusCode"), _get(resp, "dmStatus", "dmStatusMessage")
@@ -272,7 +272,7 @@ class IsdsClient:
         return bytes(resp["dmSignature"])
 
     def mark_message_as_downloaded(self, message_id: str) -> None:
-        """MarkMessageAsDownloaded — flags a message as downloaded (removes the *new* flag)."""
+        """MarkMessageAsDownloaded - flags a message as downloaded (removes the *new* flag)."""
         resp = self._call("dm_info", "MarkMessageAsDownloaded", dmID=message_id)
         _check_status(
             _get(resp, "dmStatus", "dmStatusCode"), _get(resp, "dmStatus", "dmStatusMessage")
@@ -289,7 +289,7 @@ class IsdsClient:
         to_hands: str | None = None,
         sender_ref_number: str | None = None,
     ) -> str:
-        """CreateMessage — sends a data message (a legal act). Returns the new dmID.
+        """CreateMessage - sends a data message (a legal act). Returns the new dmID.
 
         ``files`` is a list of ``{"file_name", "mime_type", "content"(bytes),
         "meta_type"}`` dicts; exactly one file must have meta_type "main".
