@@ -1,0 +1,13 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Delivery semantics and legal questions
+    url: https://github.com/matuspavliscak/agentovka/blob/main/docs/delivery-semantics.md
+    about: >
+      Read this before filing questions about delivery, fiction of delivery,
+      deadlines, or the 90-day deletion. Note that Agentovka is not a legal service.
+  - name: Security-sensitive reports
+    url: https://github.com/matuspavliscak/agentovka/blob/main/CONTRIBUTING.md#reporting-security-issues
+    about: >
+      For issues that could cause unintended delivery, unintended sending, or a
+      credential leak, please follow the security reporting guidance instead of a
+      public proof-of-concept.
