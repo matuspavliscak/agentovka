@@ -351,12 +351,21 @@ class IsdsClient:
         *,
         to_hands: str | None = None,
         sender_ref_number: str | None = None,
+        message_type: str | None = None,
     ) -> str:
         """CreateMessage - sends a data message (a legal act). Returns the new dmID.
 
         ``files`` is a list of ``{"file_name", "mime_type", "content"(bytes),
         "meta_type"}`` dicts; exactly one file must have meta_type "main".
+
+        ``message_type`` is the dmType envelope attribute: "V" (or None) for a
+        veřejná DZ - only valid when the recipient is an OVM - and "K" for a
+        poštovní datová zpráva to a private-law recipient (free of charge for
+        the sender since 1 Jan 2022, Act No. 261/2021 Coll.). Sending to a
+        non-OVM box without "K" fails with ISDS error 1205.
         """
+        if message_type not in (None, "V", "K"):
+            raise ValueError('message_type must be None, "V" or "K"')
         dm_files = {
             "dmFile": [
                 {
@@ -368,12 +377,14 @@ class IsdsClient:
                 for f in files
             ]
         }
-        envelope = {
+        envelope: dict[str, Any] = {
             "dbIDRecipient": recipient_id,
             "dmAnnotation": subject,
             "dmToHands": to_hands,
             "dmSenderRefNumber": sender_ref_number,
         }
+        if message_type is not None:
+            envelope["dmType"] = message_type
         resp = self._call(
             "dm_operations",
             "CreateMessage",

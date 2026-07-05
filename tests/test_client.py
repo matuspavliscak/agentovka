@@ -200,6 +200,34 @@ def test_create_message_returns_id(client: IsdsClient) -> None:
     assert new_id == "99999"
 
 
+def test_create_message_dm_type(client: IsdsClient) -> None:
+    """message_type is passed as the dmType envelope attribute (K = PDZ)."""
+    calls: list[dict[str, Any]] = []
+
+    class _Op:
+        def __call__(self, **kwargs: Any) -> Any:
+            calls.append(kwargs)
+            return {"dmID": "1", "dmStatus": {"dmStatusCode": "0000", "dmStatusMessage": "OK"}}
+
+    class _Svc:
+        CreateMessage = _Op()
+
+    class _Cl:
+        service = _Svc()
+
+    client._clients["dm_operations"] = _Cl()  # type: ignore[assignment]
+    files = [{"file_name": "a.txt", "mime_type": "text/plain", "content": b"x"}]
+
+    client.create_message("aaaaaaa", "Verejna", files)
+    assert "dmType" not in calls[0]["dmEnvelope"]
+
+    client.create_message("aaaaaaa", "PDZ", files, message_type="K")
+    assert calls[1]["dmEnvelope"]["dmType"] == "K"
+
+    with pytest.raises(ValueError, match="message_type"):
+        client.create_message("aaaaaaa", "Spatny typ", files, message_type="X")
+
+
 def test_auth_error_from_transport_401(client: IsdsClient) -> None:
     from zeep.exceptions import TransportError
 
