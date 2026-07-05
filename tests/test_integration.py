@@ -49,3 +49,49 @@ def test_find_databox_ovm(test_client: IsdsClient) -> None:
     """Safe class-A call: search returns at least one box for a known query."""
     boxes = test_client.find_databox("Ministerstvo vnitra")
     assert isinstance(boxes, list)
+
+
+@pytest.mark.skipif(not (_ENABLED and _HAS_CREDS), reason=skip_reason)
+def test_list_sent_messages(test_client: IsdsClient) -> None:
+    """Safe class-A call: listing sent messages does not touch the received store."""
+    msgs = test_client.get_list_of_sent_messages(limit=10)
+    assert isinstance(msgs, list)
+
+
+# ---------------------------------------------------------------------------
+# DELIVERY-TRIGGERING integration tests (event EV13). These legally deliver
+# every message in the TEST box, which is harmless there but is still kept
+# behind its own opt-in flag so the default integration run stays class-A.
+# Run with AGENTOVKA_RUN_INTEGRATION_DELIVERY=1 as well.
+# ---------------------------------------------------------------------------
+
+_DELIVERY_ENABLED = os.environ.get("AGENTOVKA_RUN_INTEGRATION_DELIVERY") == "1"
+delivery_skip_reason = (
+    "set AGENTOVKA_RUN_INTEGRATION_DELIVERY=1 to run delivery-triggering integration tests "
+    "(they deliver all messages in the TEST box, event EV13)"
+)
+
+
+@pytest.mark.skipif(
+    not (_ENABLED and _HAS_CREDS and _DELIVERY_ENABLED), reason=delivery_skip_reason
+)
+def test_received_list_and_zfo_roundtrip(test_client: IsdsClient) -> None:
+    """List received messages; if any exists, download and parse the signed ZFO.
+
+    This exercises the real ZFO structure end to end - most importantly that
+    dmDeliveryTime/dmMessageStatus live as siblings of dmDm and are parsed.
+    """
+    from isds_client.zfo import parse_zfo
+
+    msgs = test_client.get_list_of_received_messages(limit=10)
+    assert isinstance(msgs, list)
+    if not msgs:
+        pytest.skip("test box has no received messages - send one between test boxes first")
+
+    raw = test_client.signed_message_download(msgs[0].message_id)
+    parsed = parse_zfo(raw)
+    assert parsed.envelope.message_id == msgs[0].message_id
+    # The whole point of the sibling-fields fix: real ZFOs must yield a
+    # delivery time and a status, not None.
+    assert parsed.envelope.delivery_time is not None
+    assert parsed.envelope.status is not None
