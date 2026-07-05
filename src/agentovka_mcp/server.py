@@ -430,8 +430,26 @@ def send_message(
         bool, Field(description="If True (default) only previews; does not send.")
     ] = True,
     to_hands: Annotated[str | None, Field(description="Optional 'to hands of' (k rukám)")] = None,
+    message_type: Annotated[
+        str | None,
+        Field(
+            description=(
+                "dmType of the message: null/'V' = veřejná datová zpráva (only "
+                "valid when the recipient is an OVM); 'K' = poštovní datová "
+                "zpráva (PDZ) for private-law recipients - free for the sender "
+                "since 1 Jan 2022 (Act No. 261/2021 Coll.), but sending to a "
+                "non-OVM box WITHOUT 'K' fails with ISDS error 1205."
+            )
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     settings = get_settings()
+
+    if message_type not in (None, "V", "K"):
+        return {
+            "error": "invalid_message_type",
+            "explanation": "message_type must be null, 'V' or 'K'",
+        }
 
     # Resolve each attachment's meta_type. ISDS requires EXACTLY ONE 'main'
     # file. A lone attachment with no meta_type is the main document; with
@@ -444,6 +462,7 @@ def send_message(
     preview = {
         "recipient_id": recipient_id,
         "subject": subject,
+        "message_type": message_type or "V",
         "environment": settings.environment.value,
         "attachments": [
             {
@@ -498,7 +517,9 @@ def send_message(
                     "content": base64.b64decode(content_b64),
                 }
             )
-        new_id = get_client().create_message(recipient_id, subject, files, to_hands=to_hands)
+        new_id = get_client().create_message(
+            recipient_id, subject, files, to_hands=to_hands, message_type=message_type
+        )
     except IsdsError as exc:
         return {"error": str(exc), "would_send": preview}
     except Exception as exc:
