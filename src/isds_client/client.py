@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import enum
 import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from importlib import resources
 from typing import Any
@@ -35,7 +36,6 @@ from typing import Any
 from requests import Session
 from requests.auth import HTTPBasicAuth
 from zeep import Client, Settings
-from zeep import exceptions as zeep_exceptions
 from zeep import xsd as zeep_xsd
 from zeep.transports import Transport
 
@@ -73,6 +73,9 @@ _SERVICE_PATH: dict[str, str] = {
     "dm_info": "dx",
     "dm_operations": "dz",
 }
+
+# Box types queried by a name search (dbType is mandatory for name searches).
+_SEARCH_DB_TYPES: tuple[str, ...] = ("OVM", "PO", "PFO", "FO")
 
 # Element sequence of tDbOwnerInfo in dbTypes.xsd. Every element is required
 # by the schema, so FindDataBox requests must name each one - filled with a
@@ -192,18 +195,9 @@ class IsdsClient:
         return self._clients[service]
 
     def _call(self, service: str, operation: str, **kwargs: Any) -> Any:
-        client = self._client(service)
-        try:
-            return getattr(client.service, operation)(**kwargs)
-        except zeep_exceptions.TransportError as exc:
-            # zeep surfaces non-2xx HTTP responses as TransportError (it never
-            # raises requests.HTTPError from an operation call).
-            if exc.status_code in (401, 403):
-                raise IsdsAuthError(
-                    f"ISDS rejected the credentials (HTTP {exc.status_code}). "
-                    "Check ISDS_USERNAME/ISDS_PASSWORD and ISDS_ENV."
-                ) from exc
-            raise
+        # Auth failures (401/403) are raised as IsdsAuthError by _IsdsTransport
+        # before zeep ever parses the response; other transport errors propagate.
+        return getattr(self._client(service).service, operation)(**kwargs)
 
     # -- class A: no legal consequences ---------------------------------
 
@@ -217,7 +211,13 @@ class IsdsClient:
         # FO/PFO boxes carry the owner's name in pnFirstName/pnLastName;
         # firmName is only set for PO/OVM boxes.
         person_name = " ".join(
-            p for p in (_get(owner, "pnFirstName"), _get(owner, "pnLastName")) if p
+            p
+            for p in (
+                _get(owner, "pnFirstName"),
+                _get(owner, "pnMiddleName"),
+                _get(owner, "pnLastName"),
+            )
+            if p and p.strip()
         )
         return OwnerInfo(
             dbID=owner["dbID"],
@@ -247,17 +247,33 @@ class IsdsClient:
                 boxes = []
             if boxes:
                 return boxes
-        # A name search requires dbType (ISDS error 1101 without it), so try
-        # each box type and merge, deduplicating by box ID.
-        found: dict[str, DataBox] = {}
-        for db_type in ("OVM", "PO", "PFO", "FO"):
+        # A name search requires dbType (ISDS error 1101 without it), so query
+        # every box type and merge, deduplicating by box ID. The typed queries
+        # are independent, so they run concurrently (requests' connection pool
+        # is thread-safe; the zeep client is pre-built before the threads start).
+        self._client("db_search")
+
+        def _search_type(db_type: str) -> list[DataBox] | IsdsResponseError:
             try:
-                boxes = self._find_databox_by({"firmName": q, "dbType": db_type})
-            except IsdsResponseError:
+                return self._find_databox_by({"firmName": q, "dbType": db_type})
+            except IsdsResponseError as exc:
+                return exc
+
+        with ThreadPoolExecutor(max_workers=len(_SEARCH_DB_TYPES)) as pool:
+            results = list(pool.map(_search_type, _SEARCH_DB_TYPES))
+
+        found: dict[str, DataBox] = {}
+        for result in results:
+            if isinstance(result, IsdsResponseError):
                 continue
-            for box in boxes:
+            for box in result:
                 if box.box_id and box.box_id not in found:
                     found[box.box_id] = box
+        if not found and all(isinstance(r, IsdsResponseError) for r in results):
+            # Every typed query failed with a real ISDS error ("no match" is
+            # status 0002 and maps to an empty list, not an exception), so
+            # surface the failure instead of a false "no box found".
+            raise next(r for r in results if isinstance(r, IsdsResponseError))
         return list(found.values())
 
     def _find_databox_by(self, owner_info: dict[str, Any]) -> list[DataBox]:
@@ -269,12 +285,13 @@ class IsdsClient:
         }
         resp = self._call("db_search", "FindDataBox", dbOwnerInfo=payload)
         # FindDataBox-specific statuses: 0002 = no box matches (an empty
-        # result, not an error), 0003 = result list truncated (still data).
+        # result, not an error); 0000/0001/0003 carry data (0003 means the
+        # server truncated the result list).
         code = _get(resp, "dbStatus", "dbStatusCode")
         if code == "0002":
             return []
-        if code != "0003":
-            _check_db(resp)
+        if code not in ("0000", "0001", "0003"):
+            raise IsdsResponseError(code or "????", _get(resp, "dbStatus", "dbStatusMessage") or "")
         boxes = _unwrap_repeated(resp["dbResults"], "dbOwnerInfo")
         return [_to_databox(b) for b in boxes]
 
@@ -465,8 +482,13 @@ def _record_to_envelope(rec: Any) -> MessageEnvelope:
     # Tolerant lookups throughout: depending on the operation, the envelope
     # comes as tRecord (status/times inline) or as tDelivery's dmDm (only the
     # gMessageEnvelope group - status/times live as SIBLINGS of dmDm).
+    # dmID alone is mandatory in every envelope shape - fail loudly rather
+    # than let a message with the bogus id "None" flow downstream.
+    dm_id = _get(rec, "dmID")
+    if dm_id is None:
+        raise IsdsResponseError("????", "response envelope is missing the mandatory dmID")
     return MessageEnvelope(
-        dmID=str(_get(rec, "dmID")),
+        dmID=str(dm_id),
         dbIDSender=_get(rec, "dbIDSender"),
         dmSender=_get(rec, "dmSender"),
         dmSenderAddress=_get(rec, "dmSenderAddress"),

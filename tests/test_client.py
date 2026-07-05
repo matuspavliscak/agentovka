@@ -246,26 +246,6 @@ def test_auth_error_from_http_401_with_html_body(monkeypatch: pytest.MonkeyPatch
         transport.post_xml("https://example.invalid/DS/DsManage", None, {})
 
 
-def test_auth_error_from_transport_401(client: IsdsClient) -> None:
-    from zeep.exceptions import TransportError
-
-    from isds_client.errors import IsdsAuthError
-
-    class _AuthFailingOp:
-        def __call__(self, **kwargs: Any) -> Any:
-            raise TransportError("Unauthorized", status_code=401)
-
-    class _Svc:
-        GetOwnerInfoFromLogin = _AuthFailingOp()
-
-    class _Cl:
-        service = _Svc()
-
-    client._clients["db_access"] = _Cl()  # type: ignore[assignment]
-    with pytest.raises(IsdsAuthError):
-        client.get_owner_info()
-
-
 def test_find_databox_falls_back_to_name_for_7char_query(client: IsdsClient) -> None:
     """A 7-char lowercase query that matches no box ID retries as a name.
 
@@ -310,8 +290,151 @@ def test_find_databox_falls_back_to_name_for_7char_query(client: IsdsClient) -> 
     client._clients["db_search"] = _Cl()  # type: ignore[assignment]
     boxes = client.find_databox("tescoma")
     assert calls[0] == {"dbID": "tescoma"}
-    assert [c["firmName"] for c in calls[1:]] == ["tescoma"] * 4
-    assert [c["dbType"] for c in calls[1:]] == ["OVM", "PO", "PFO", "FO"]
+    # The four typed name queries run concurrently, so compare as a set.
+    assert {c["firmName"] for c in calls[1:]} == {"tescoma"}
+    assert {c["dbType"] for c in calls[1:]} == {"OVM", "PO", "PFO", "FO"}
     # The same box returned for every type is deduplicated by box ID.
     assert len(boxes) == 1
     assert boxes[0].name == "Tescoma"
+
+
+def test_find_databox_by_name_raises_when_all_types_fail(client: IsdsClient) -> None:
+    """If every typed query fails with a real ISDS error, the error surfaces
+    instead of a false 'no box found' (0002 'no match' is not an error)."""
+
+    class _Op:
+        def __call__(self, *, dbOwnerInfo: dict[str, Any]) -> Any:
+            return {
+                "dbResults": None,
+                "dbStatus": {"dbStatusCode": "1301", "dbStatusMessage": "rate limited"},
+            }
+
+    class _Svc:
+        FindDataBox = _Op()
+
+    class _Cl:
+        service = _Svc()
+
+    client._clients["db_search"] = _Cl()  # type: ignore[assignment]
+    with pytest.raises(IsdsResponseError) as exc:
+        client.find_databox("Ministerstvo vnitra")
+    assert exc.value.status_code == "1301"
+
+
+def test_find_databox_by_name_tolerates_partial_type_errors(client: IsdsClient) -> None:
+    """An error for one box type does not discard results from the others
+    (e.g. FO name searches can be restricted while OVM succeeds)."""
+
+    class _Op:
+        def __call__(self, *, dbOwnerInfo: dict[str, Any]) -> Any:
+            if dbOwnerInfo.get("dbType") == "FO":
+                return {
+                    "dbResults": None,
+                    "dbStatus": {"dbStatusCode": "1234", "dbStatusMessage": "restricted"},
+                }
+            return {
+                "dbResults": {
+                    "dbOwnerInfo": [
+                        {
+                            "dbID": "aaaaaaa",
+                            "dbType": dbOwnerInfo.get("dbType"),
+                            "firmName": "Ministerstvo vnitra",
+                            "ic": "00007064",
+                            "dbEffectiveOVM": True,
+                        }
+                    ]
+                },
+                "dbStatus": {"dbStatusCode": "0000", "dbStatusMessage": "OK"},
+            }
+
+    class _Svc:
+        FindDataBox = _Op()
+
+    class _Cl:
+        service = _Svc()
+
+    client._clients["db_search"] = _Cl()  # type: ignore[assignment]
+    boxes = client.find_databox("Ministerstvo vnitra")
+    assert [b.box_id for b in boxes] == ["aaaaaaa"]
+
+
+def test_db_owner_info_elements_match_bundled_schema() -> None:
+    """_DB_OWNER_INFO_ELEMENTS must mirror the tDbOwnerInfo sequence in the
+    bundled dbTypes.xsd - if the schema is ever updated, this fails instead of
+    FindDataBox silently breaking with ISDS error 2004 again."""
+    from isds_client.client import _DB_OWNER_INFO_ELEMENTS
+
+    client = IsdsClient("u", "p", IsdsEnvironment.TEST)
+    owner_type = client._client("db_search").get_type("{http://isds.czechpoint.cz/v20}tDbOwnerInfo")
+    assert tuple(name for name, _ in owner_type.elements) == _DB_OWNER_INFO_ELEMENTS
+
+
+class _Value1Rows:
+    """Mimics zeep's representation of ISDS array types whose whole <sequence>
+    repeats (tDbOwnersArray, tRecordsArray): rows live under the private
+    _value_1 attribute as [{element_name: {...}}, ...], not as a flat list."""
+
+    def __init__(self, name: str, items: list[Any]) -> None:
+        self._value_1 = [{name: item} for item in items]
+
+
+def test_find_databox_unwraps_value1_rows(client: IsdsClient) -> None:
+    """The production zeep shape (_value_1 rows) is unwrapped correctly."""
+    _install(
+        client,
+        "db_search",
+        {
+            "FindDataBox": {
+                "dbResults": _Value1Rows(
+                    "dbOwnerInfo",
+                    [
+                        {
+                            "dbID": "xind94x",
+                            "dbType": "OVM",
+                            "firmName": "Ministerstvo vnitra",
+                            "ic": "00007064",
+                            "dbEffectiveOVM": True,
+                        }
+                    ],
+                ),
+                "dbStatus": {"dbStatusCode": "0000", "dbStatusMessage": "OK"},
+            }
+        },
+    )
+    boxes = client.find_databox("Ministerstvo vnitra")
+    assert [b.box_id for b in boxes] == ["xind94x"]
+
+
+def test_sent_list_unwraps_value1_rows(client: IsdsClient) -> None:
+    _install(
+        client,
+        "dm_info",
+        {
+            "GetListOfSentMessages": {
+                "dmRecords": _Value1Rows(
+                    "dmRecord",
+                    [{"dmID": "10123456", "dmAnnotation": "Věc", "dmMessageStatus": 1}],
+                ),
+                "dmStatus": {"dmStatusCode": "0000", "dmStatusMessage": "OK"},
+            }
+        },
+    )
+    msgs = client.get_list_of_sent_messages()
+    assert [m.message_id for m in msgs] == ["10123456"]
+
+
+def test_record_missing_dmid_raises(client: IsdsClient) -> None:
+    """A record without the mandatory dmID fails loudly instead of producing
+    a message with the bogus id 'None'."""
+    _install(
+        client,
+        "dm_info",
+        {
+            "GetListOfSentMessages": {
+                "dmRecords": {"dmRecord": [{"dmAnnotation": "bez ID"}]},
+                "dmStatus": {"dmStatusCode": "0000", "dmStatusMessage": "OK"},
+            }
+        },
+    )
+    with pytest.raises(IsdsResponseError, match="dmID"):
+        client.get_list_of_sent_messages()

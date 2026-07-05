@@ -437,8 +437,8 @@ def send_message(
                 "dmType of the message: null/'V' = veřejná datová zpráva (only "
                 "valid when the recipient is an OVM); 'K' = poštovní datová "
                 "zpráva (PDZ) for private-law recipients - free for the sender "
-                "since 2022, but sending to a non-OVM box WITHOUT 'K' fails "
-                "with ISDS error 1205."
+                "since 1 Jan 2022 (Act No. 261/2021 Coll.), but sending to a "
+                "non-OVM box WITHOUT 'K' fails with ISDS error 1205."
             )
         ),
     ] = None,
