@@ -57,3 +57,17 @@ def test_unknown_status_is_tolerated() -> None:
     blob = build_cms(message_xml(status=99))
     parsed = parse_zfo(blob)
     assert parsed.envelope.status is None
+
+
+def test_billion_laughs_is_rejected() -> None:
+    # An internal-entity expansion bomb wrapped in a valid CMS envelope must be
+    # refused by the hardened parser rather than exhausting memory.
+    bomb = (
+        b'<?xml version="1.0"?>'
+        b'<!DOCTYPE lolz [<!ENTITY lol "lol">'
+        b'<!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">'
+        b'<!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;">'
+        b"]><q:dmDm xmlns:q='http://isds.czechpoint.cz/v20'>&lol3;</q:dmDm>"
+    )
+    with pytest.raises(ZfoParseError):
+        parse_zfo(build_cms(bomb))

@@ -274,7 +274,9 @@ class IsdsClient:
     def mark_message_as_downloaded(self, message_id: str) -> None:
         """MarkMessageAsDownloaded — flags a message as downloaded (removes the *new* flag)."""
         resp = self._call("dm_info", "MarkMessageAsDownloaded", dmID=message_id)
-        _check_status(_get(resp, "dmStatusCode"), _get(resp, "dmStatusMessage"))
+        _check_status(
+            _get(resp, "dmStatus", "dmStatusCode"), _get(resp, "dmStatus", "dmStatusMessage")
+        )
 
     # -- class C: legal act (write) -------------------------------------
 

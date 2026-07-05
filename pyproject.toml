@@ -24,6 +24,7 @@ dependencies = [
     "mcp>=1.2",
     "holidays>=0.50",
     "asn1crypto>=1.5",
+    "defusedxml>=0.7.1",
 ]
 
 [project.urls]

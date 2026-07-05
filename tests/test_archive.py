@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from agentovka_mcp.archive import Archive
 from isds_client.zfo import parse_zfo
 
@@ -57,3 +59,25 @@ def test_read_attachment_blocks_traversal(tmp_path: Path, sample_zfo: bytes) -> 
     archive.store(parsed.envelope, sample_zfo, parsed.files)
     assert archive.read_attachment("10123456", "rozhodnuti.pdf") == b"%PDF-1.4 fake"
     assert archive.read_attachment("10123456", "../../index.db") is None
+
+
+def test_store_rejects_unsafe_message_id(tmp_path: Path, sample_zfo: bytes) -> None:
+    from agentovka_mcp.archive import UnsafeIdentifierError
+
+    archive = make_archive(tmp_path)
+    parsed = parse_zfo(sample_zfo)
+    # Simulate a malicious/compromised endpoint returning a traversal dmID.
+    for bad in ("../../../etc/evil", "/etc/evil", "..", "a/b"):
+        parsed.envelope.message_id = bad
+        with pytest.raises(UnsafeIdentifierError):
+            archive.store(parsed.envelope, sample_zfo, parsed.files)
+    # No directory should have been created outside the archive root.
+    assert not (tmp_path.parent / "etc").exists()
+
+
+def test_get_rejects_unsafe_message_id(tmp_path: Path, sample_zfo: bytes) -> None:
+    archive = make_archive(tmp_path)
+    parsed = parse_zfo(sample_zfo)
+    archive.store(parsed.envelope, sample_zfo, parsed.files)
+    assert archive.get("../../index") is None
+    assert archive.get("..") is None

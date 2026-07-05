@@ -136,3 +136,50 @@ def test_delivery_deadline_tool(reset_singletons: _StubClient) -> None:
     result = server.get_delivery_deadline("2026-06-01", today="2026-06-05")
     assert result["fiction_delivery_date"] == "2026-06-11"
     assert result["days_remaining"] == 6
+
+
+def _att(name: str, meta: str | None = None) -> dict[str, str]:
+    d = {
+        "file_name": name,
+        "mime_type": "application/pdf",
+        "content_base64": base64.b64encode(b"x").decode(),
+    }
+    if meta is not None:
+        d["meta_type"] = meta
+    return d
+
+
+def test_single_attachment_defaults_to_main(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stub = _StubClient()
+    settings = Settings("u", "p", IsdsEnvironment.TEST, tmp_path / "a", allow_send=True)
+    monkeypatch.setattr(server, "_settings", settings)
+    monkeypatch.setattr(server, "_client", stub)
+    monkeypatch.setattr(server, "_archive", Archive(tmp_path / "a", "test"))
+    result = server.send_message("aaaaaaa", "Test", [_att("a.pdf")], dry_run=False)
+    assert result["sent"] is True
+    assert stub.sent_message["files"][0]["meta_type"] == "main"
+
+
+def test_multiple_attachments_without_main_rejected(reset_singletons: _StubClient) -> None:
+    # Two attachments, neither marked main -> both default to enclosure -> 0 mains.
+    result = server.send_message("aaaaaaa", "Test", [_att("a.pdf"), _att("b.pdf")], dry_run=True)
+    assert result["error"] == "invalid_attachments"
+    assert reset_singletons.sent_message is None
+
+
+def test_multiple_attachments_with_two_mains_rejected(reset_singletons: _StubClient) -> None:
+    result = server.send_message(
+        "aaaaaaa", "Test", [_att("a.pdf", "main"), _att("b.pdf", "main")], dry_run=True
+    )
+    assert result["error"] == "invalid_attachments"
+
+
+def test_multiple_attachments_one_main_ok(reset_singletons: _StubClient) -> None:
+    result = server.send_message(
+        "aaaaaaa", "Test", [_att("a.pdf", "main"), _att("b.pdf", "enclosure")], dry_run=True
+    )
+    assert result["dry_run"] is True
+    metas = [a["meta_type"] for a in result["would_send"]["attachments"]]
+    assert metas == ["main", "enclosure"]

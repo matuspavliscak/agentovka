@@ -46,6 +46,22 @@ CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
 
 _TEXT_MIME = re.compile(r"^text/|[+/]xml$|^application/json$")
 
+# A message_id becomes a filesystem directory name. It arrives from the ZFO /
+# network (whose CMS signature we deliberately do not verify) or from an MCP
+# tool parameter, so it is untrusted. ISDS message IDs are short alphanumeric
+# tokens; anything else is rejected to prevent path traversal / arbitrary write.
+_SAFE_COMPONENT = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+
+class UnsafeIdentifierError(ValueError):
+    """A message_id is not a safe filesystem path component."""
+
+
+def _safe_component(value: str) -> str:
+    if not value or value in (".", "..") or not _SAFE_COMPONENT.match(value):
+        raise UnsafeIdentifierError(f"unsafe message id / path component: {value!r}")
+    return value
+
 
 def _attachment_text(files: list[DmFile]) -> str:
     """Best-effort plain text from attachments for the FTS index."""
@@ -60,7 +76,9 @@ def _attachment_text(files: list[DmFile]) -> str:
 
 
 def _safe_filename(name: str) -> str:
-    cleaned = re.sub(r"[^\w.\- ]", "_", name).strip() or "attachment.bin"
+    cleaned = re.sub(r"[^\w.\- ]", "_", name).strip()
+    if cleaned in ("", ".", ".."):
+        cleaned = "attachment.bin"
     return cleaned[:200]
 
 
@@ -99,7 +117,8 @@ class Archive:
         events: list[DeliveryEvent] | None = None,
     ) -> Path:
         """Persist a downloaded message; idempotent per (message_id, environment)."""
-        msg_dir = self.root / self.environment / envelope.message_id
+        message_id = _safe_component(envelope.message_id)
+        msg_dir = self.root / self.environment / message_id
         att_dir = msg_dir / "attachments"
         att_dir.mkdir(parents=True, exist_ok=True)
 
@@ -202,6 +221,10 @@ class Archive:
 
     def get(self, message_id: str) -> dict[str, Any] | None:
         """Load metadata.json for one archived message, or None."""
+        try:
+            message_id = _safe_component(message_id)
+        except UnsafeIdentifierError:
+            return None
         meta_path = self.root / self.environment / message_id / "metadata.json"
         if not meta_path.exists():
             return None
@@ -210,6 +233,10 @@ class Archive:
         return data
 
     def read_attachment(self, message_id: str, file_name: str) -> bytes | None:
+        try:
+            message_id = _safe_component(message_id)
+        except UnsafeIdentifierError:
+            return None
         att = self.root / self.environment / message_id / "attachments" / file_name
         # Guard against path traversal via crafted file names.
         if not att.resolve().is_relative_to((self.root / self.environment).resolve()):

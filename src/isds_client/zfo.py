@@ -24,9 +24,11 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
-from xml.etree import ElementTree
+from xml.etree.ElementTree import Element
 
 from asn1crypto import cms as asn1_cms
+from defusedxml.common import DefusedXmlException
+from defusedxml.ElementTree import ParseError, fromstring
 
 from isds_client.models import DeliveryEvent, DmFile, MessageEnvelope, MessageStatus
 
@@ -85,14 +87,14 @@ def _strip_ns(tag: str) -> str:
     return tag.rsplit("}", 1)[-1]
 
 
-def _find_first(root: ElementTree.Element, local_name: str) -> ElementTree.Element | None:
+def _find_first(root: Element, local_name: str) -> Element | None:
     for el in root.iter():
         if _strip_ns(el.tag) == local_name:
             return el
     return None
 
 
-def _child_map(el: ElementTree.Element) -> dict[str, Any]:
+def _child_map(el: Element) -> dict[str, Any]:
     return {_strip_ns(child.tag): (child.text or None) for child in el}
 
 
@@ -105,7 +107,7 @@ def _parse_time(value: str | None) -> datetime | None:
         return None
 
 
-def _parse_envelope(dm: ElementTree.Element) -> MessageEnvelope:
+def _parse_envelope(dm: Element) -> MessageEnvelope:
     values = _child_map(dm)
     # dmID may live on the dmDm element itself (attribute-less child) or on
     # the enclosing dmReturnedMessage; fall back to empty string upstream.
@@ -140,7 +142,7 @@ def _parse_envelope(dm: ElementTree.Element) -> MessageEnvelope:
     )
 
 
-def _parse_files(root: ElementTree.Element) -> list[DmFile]:
+def _parse_files(root: Element) -> list[DmFile]:
     files: list[DmFile] = []
     for el in root.iter():
         if _strip_ns(el.tag) != "dmFile":
@@ -161,7 +163,7 @@ def _parse_files(root: ElementTree.Element) -> list[DmFile]:
     return files
 
 
-def _parse_events(root: ElementTree.Element) -> list[DeliveryEvent]:
+def _parse_events(root: Element) -> list[DeliveryEvent]:
     events: list[DeliveryEvent] = []
     for el in root.iter():
         if _strip_ns(el.tag) != "dmEvent":
@@ -180,9 +182,11 @@ def parse_zfo(data: bytes) -> ParsedZfo:
     """Parse a ZFO file (or raw signed-message CMS blob) into structured data."""
     xml_bytes = extract_xml_from_cms(data)
     try:
-        root = ElementTree.fromstring(xml_bytes)
-    except ElementTree.ParseError as exc:
+        root = fromstring(xml_bytes)
+    except ParseError as exc:
         raise ZfoParseError("CMS content is not valid XML") from exc
+    except DefusedXmlException as exc:
+        raise ZfoParseError(f"CMS content contains forbidden XML constructs: {exc}") from exc
 
     dm = _find_first(root, "dmDm")
     envelope: MessageEnvelope

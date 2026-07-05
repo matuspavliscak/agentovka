@@ -28,12 +28,12 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from agentovka_mcp.archive import Archive
+from agentovka_mcp.archive import Archive, UnsafeIdentifierError
 from agentovka_mcp.config import Settings, load_settings
 from agentovka_mcp.deadlines import describe_deadline
 from isds_client.client import IsdsClient
 from isds_client.errors import IsdsError
-from isds_client.zfo import parse_zfo
+from isds_client.zfo import ZfoParseError, parse_zfo
 
 _DELIVERY_WARNING = (
     "POZOR / WARNING: Volání tohoto nástroje se v ISDS počítá jako přihlášení a "
@@ -220,7 +220,7 @@ def get_delivery_deadline(
 
 
 @mcp.tool(
-    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True),
+    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=True),
     description=(
         "TŘÍDA B — SPOUŠTÍ DORUČENÍ. " + _DELIVERY_WARNING + " Lists messages "
         "delivered to your box from ISDS. Requires acknowledge_delivery_trigger=True."
@@ -259,7 +259,7 @@ def list_received_messages(
 
 
 @mcp.tool(
-    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True),
+    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=True),
     description=(
         "TŘÍDA B — SPOUŠTÍ DORUČENÍ. " + _DELIVERY_WARNING + " Downloads the signed "
         "message (ZFO) from ISDS, stores it in the local archive, extracts "
@@ -285,9 +285,16 @@ def download_message(
     except IsdsError as exc:
         return {"error": str(exc)}
 
-    parsed = parse_zfo(zfo_bytes)
+    try:
+        parsed = parse_zfo(zfo_bytes)
+    except ZfoParseError as exc:
+        return {"error": f"could not parse downloaded ZFO: {exc}"}
+
     archive = get_archive()
-    msg_dir = archive.store(parsed.envelope, zfo_bytes, parsed.files, parsed.events)
+    try:
+        msg_dir = archive.store(parsed.envelope, zfo_bytes, parsed.files, parsed.events)
+    except UnsafeIdentifierError as exc:
+        return {"error": f"refusing to archive message with unsafe id: {exc}"}
 
     text_previews = []
     for f in parsed.files:
@@ -408,6 +415,15 @@ def send_message(
     to_hands: Annotated[str | None, Field(description="Optional 'to hands of' (k rukám)")] = None,
 ) -> dict[str, Any]:
     settings = get_settings()
+
+    # Resolve each attachment's meta_type. ISDS requires EXACTLY ONE 'main'
+    # file. A lone attachment with no meta_type is the main document; with
+    # several files, extra ones default to 'enclosure' and the caller must mark
+    # exactly one 'main' explicitly.
+    default_meta = "main" if len(attachments) == 1 else "enclosure"
+    resolved_meta = [a.get("meta_type") or default_meta for a in attachments]
+    main_count = resolved_meta.count("main")
+
     preview = {
         "recipient_id": recipient_id,
         "subject": subject,
@@ -416,12 +432,23 @@ def send_message(
             {
                 "file_name": a.get("file_name"),
                 "mime_type": a.get("mime_type"),
-                "meta_type": a.get("meta_type", "main"),
+                "meta_type": meta,
             }
-            for a in attachments
+            for a, meta in zip(attachments, resolved_meta, strict=True)
         ],
         "to_hands": to_hands,
     }
+
+    if not attachments or main_count != 1:
+        return {
+            "error": "invalid_attachments",
+            "explanation": (
+                "ISDS requires exactly one attachment with meta_type='main'. "
+                f"Found {main_count} main attachment(s) among {len(attachments)}. "
+                "Mark exactly one attachment meta_type='main'; others 'enclosure'."
+            ),
+            "would_send": preview,
+        }
 
     if dry_run:
         return {
@@ -442,7 +469,7 @@ def send_message(
 
     try:
         files = []
-        for a in attachments:
+        for a, meta in zip(attachments, resolved_meta, strict=True):
             content_b64 = a.get("content_base64")
             if not content_b64:
                 return {"error": f"attachment {a.get('file_name')!r} is missing content_base64"}
@@ -450,7 +477,7 @@ def send_message(
                 {
                     "file_name": a["file_name"],
                     "mime_type": a["mime_type"],
-                    "meta_type": a.get("meta_type", "main"),
+                    "meta_type": meta,
                     "content": base64.b64decode(content_b64),
                 }
             )
