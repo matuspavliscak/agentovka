@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "agentovka": {
+      "command": "uvx",
+      "args": ["agentovka"],
+      "env": {
+        "ISDS_USERNAME": "your-test-username",
+        "ISDS_PASSWORD": "your-test-password",
+        "ISDS_ENV": "test",
+        "AGENTOVKA_ARCHIVE_DIR": "~/.agentovka/archive",
+        "AGENTOVKA_ALLOW_SEND": "false"
+      }
+    }
+  }
+}
