@@ -119,6 +119,24 @@ def _wsdl_path(name: str) -> str:
     return str(resources.files("isds_client.wsdl").joinpath(_WSDL_FILE[name]))
 
 
+class _IsdsTransport(Transport):
+    """Transport that turns HTTP 401/403 into IsdsAuthError.
+
+    The ISDS servers answer bad credentials with 401 and an XHTML error page,
+    not a SOAP fault - zeep would otherwise surface it as an unhelpful
+    ``Fault('Unknown fault occured')``.
+    """
+
+    def post_xml(self, address: str, envelope: Any, headers: dict[str, str]) -> Any:
+        response = super().post_xml(address, envelope, headers)
+        if response.status_code in (401, 403):
+            raise IsdsAuthError(
+                f"ISDS rejected the credentials (HTTP {response.status_code}). "
+                "Check ISDS_USERNAME/ISDS_PASSWORD and ISDS_ENV."
+            )
+        return response
+
+
 def _check_status(code: str | None, message: str | None) -> None:
     """Raise on a non-OK ISDS status code (0000 = OK, 0001 = deferred/accepted)."""
     if code in (None, "0000", "0001"):
@@ -159,7 +177,7 @@ class IsdsClient:
         self._host = _HOSTS[environment]
         session = session or Session()
         session.auth = HTTPBasicAuth(username, password)
-        transport = Transport(session=session, timeout=timeout, operation_timeout=timeout)
+        transport = _IsdsTransport(session=session, timeout=timeout, operation_timeout=timeout)
         self._settings = Settings(strict=False, xml_huge_tree=True, raw_response=False)
         self._transport = transport
         self._clients: dict[str, Client] = {}

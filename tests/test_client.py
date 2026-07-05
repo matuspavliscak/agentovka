@@ -228,6 +228,24 @@ def test_create_message_dm_type(client: IsdsClient) -> None:
         client.create_message("aaaaaaa", "Spatny typ", files, message_type="X")
 
 
+def test_auth_error_from_http_401_with_html_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Live ISDS answers bad credentials with 401 + an XHTML page (no SOAP
+    fault), so the transport itself must raise IsdsAuthError before zeep
+    tries to parse the body."""
+    from zeep.transports import Transport
+
+    from isds_client.client import _IsdsTransport
+    from isds_client.errors import IsdsAuthError
+
+    class _Resp:
+        status_code = 401
+
+    monkeypatch.setattr(Transport, "post_xml", lambda self, address, envelope, headers: _Resp())
+    transport = _IsdsTransport()
+    with pytest.raises(IsdsAuthError):
+        transport.post_xml("https://example.invalid/DS/DsManage", None, {})
+
+
 def test_auth_error_from_transport_401(client: IsdsClient) -> None:
     from zeep.exceptions import TransportError
 
