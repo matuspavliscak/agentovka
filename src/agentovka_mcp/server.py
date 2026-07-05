@@ -46,8 +46,8 @@ _DELIVERY_WARNING = (
 mcp = FastMCP(
     "agentovka",
     instructions=(
-        "Agentovka provides agentic access to Czech data boxes (datové schránky / "
-        "ISDS). Tools are grouped by legal impact. Class A tools are safe. Class B "
+        "Agentovka provides agentic access to Czech datové schránky (ISDS). "
+        "Tools are grouped by legal impact. Class A tools are safe. Class B "
         "tools (list_received_messages, download_message) TRIGGER LEGAL DELIVERY of "
         "all messages in the box and require acknowledge_delivery_trigger=True - "
         "never call them to merely 'check' for mail unless the user understands "
@@ -100,8 +100,8 @@ def _envelope_dict(env: Any) -> dict[str, Any]:
     annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True),
     description=(
         "SAFE (třída A). Vyhledá datovou schránku adresáta pro účely odesílání. "
-        "Nezpůsobuje doručení žádných zpráv. Search for a recipient's data box by "
-        "box ID (7 chars), IČ (8 digits) or name. Does NOT trigger delivery."
+        "Nezpůsobuje doručení žádných zpráv. Search for a recipient's datová "
+        "schránka by box ID (7 chars), IČ (8 digits) or name. Does NOT trigger delivery."
     ),
 )
 def search_databox(
@@ -118,7 +118,7 @@ def search_databox(
     annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True),
     description=(
         "SAFE (třída A). Vrátí informace o vlastní datové schránce. Does NOT "
-        "trigger delivery. Returns info about your own data box."
+        "trigger delivery. Returns info about your own datová schránka."
     ),
 )
 def get_databox_info() -> dict[str, Any]:
@@ -398,7 +398,7 @@ def get_delivery_receipt(
     ),
 )
 def send_message(
-    recipient_id: Annotated[str, Field(description="Recipient data box ID (7 chars)")],
+    recipient_id: Annotated[str, Field(description="Recipient datová schránka ID (7 chars)")],
     subject: Annotated[str, Field(description="Message subject (dmAnnotation)")],
     attachments: Annotated[
         list[dict[str, str]],

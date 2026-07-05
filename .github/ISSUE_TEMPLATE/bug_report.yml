@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Thanks for reporting. Please do not paste real credentials, real message
-        contents, or personal data from a production data box. Reproduce against
+        contents, or personal data from a production datová schránka. Reproduce against
         the test environment where possible.
   - type: input
     id: version

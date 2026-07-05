@@ -35,8 +35,8 @@ def _client() -> IsdsClient:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="isds-client", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("owner-info", help="show info about your own data box")
-    p_find = sub.add_parser("find", help="search for a recipient data box")
+    sub.add_parser("owner-info", help="show info about your own datová schránka")
+    p_find = sub.add_parser("find", help="search for a recipient datová schránka")
     p_find.add_argument("query")
     p_parse = sub.add_parser("parse", help="parse a local .zfo file (no network)")
     p_parse.add_argument("path")

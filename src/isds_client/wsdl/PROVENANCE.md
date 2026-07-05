@@ -12,9 +12,9 @@ published as attachments to the *Provozní řád ISDS* (ISDS Operating Rules) at
 |------|---------|
 | `dm_operations.wsdl` | Message operations (send, download): CreateMessage, SignedMessageDownload, MessageDownload |
 | `dm_info.wsdl` | Message info: GetListOfReceivedMessages, GetListOfSentMessages, delivery receipts |
-| `db_search.wsdl` | Data box directory search: FindDataBox |
+| `db_search.wsdl` | Datové schránky directory search: FindDataBox |
 | `db_access.wsdl` | Login-related services: GetOwnerInfoFromLogin, GetUserInfoFromLogin |
-| `db_manipulations.wsdl` | Data box management services |
+| `db_manipulations.wsdl` | Datové schránky management services |
 | `dbTypes.xsd` | Shared XML schema types for the db_* services |
 | `dmBaseTypes.xsd` | Shared XML schema types for the dm_* services |
 

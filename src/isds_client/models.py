@@ -34,7 +34,7 @@ class MessageStatus(enum.IntEnum):
 
 
 class DataBoxType(enum.IntEnum):
-    """dbType - type of a data box (subset of the ISDS enumeration)."""
+    """dbType - type of a datová schránka (subset of the ISDS enumeration)."""
 
     SYSTEM = 0
     OVM = 10  # orgán veřejné moci
@@ -61,7 +61,7 @@ class DataBoxType(enum.IntEnum):
 
 
 class DataBox(BaseModel):
-    """A data box as returned by FindDataBox / ISDSSearch."""
+    """A datová schránka as returned by FindDataBox / ISDSSearch."""
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -76,7 +76,7 @@ class DataBox(BaseModel):
 
 
 class OwnerInfo(BaseModel):
-    """Information about the authenticated user's own data box."""
+    """Information about the authenticated user's own datová schránka."""
 
     model_config = ConfigDict(populate_by_name=True)
 

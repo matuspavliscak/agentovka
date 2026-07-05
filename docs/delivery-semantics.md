@@ -15,7 +15,7 @@ konci). Každé tvrzení je opatřeno zdrojem.
 ISDS distinguishes two distinct moments in a message's life:
 
 - **Dodání (delivery to the box).** The message physically arrives in the
-  recipient's data box. Timestamp: `dmDeliveryTime`. No deadlines run yet.
+  recipient's datová schránka. Timestamp: `dmDeliveryTime`. No deadlines run yet.
 - **Doručení (legal delivery).** The message is legally delivered to the
   recipient. Timestamp: `dmAcceptanceTime`. **Statutory deadlines start running
   from this moment** (appeals, responses, etc.).
@@ -31,7 +31,7 @@ Legal delivery happens in one of two ways:
 Sources:
 - Provozní řád ISDS (operating rules), published at mojedatovaschranka.cz →
   *Aplikační rozhraní*.
-- Act No. 300/2008 Coll., § 17 (on delivery via data boxes):
+- Act No. 300/2008 Coll., § 17 (on delivery via datové schránky):
   <https://www.zakonyprolidi.cz/cs/2008-300#p17>
 
 ## 2. Fikce doručení / Fiction of delivery

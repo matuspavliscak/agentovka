@@ -1,7 +1,7 @@
 [project]
 name = "agentovka"
 version = "0.1.0"
-description = "Agentic access to Czech data boxes (datové schránky / ISDS) via MCP"
+description = "Agentic access to Czech datové schránky (ISDS) via MCP"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [{ name = "Agentovka contributors" }]

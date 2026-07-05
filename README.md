@@ -1,10 +1,10 @@
 # Agentovka
 
-**Agentic access to Czech data boxes (datové schránky / ISDS) via MCP.**
+**Agentic access to Czech datové schránky (ISDS) via MCP.**
 
 Agentovka is an [MCP](https://modelcontextprotocol.io) server that lets AI agents
-(Claude Desktop, Claude Code, any MCP client) work with a Czech **data box**
-(datová schránka) through the official ISDS application interface - safely and
+(Claude Desktop, Claude Code, any MCP client) work with a Czech **datová
+schránka** through the official ISDS application interface - safely and
 with the legal semantics of the system treated as a first-class concern.
 
 > **Not a thin SOAP wrapper.** ISDS has legal semantics that a naive client
@@ -23,8 +23,8 @@ License: MIT · Python ≥ 3.11
 
 The ISDS application interface (SOAP web services) may be used by any box owner
 with their login credentials, without prior registration. But the API mirrors
-the legal machinery of the system, and an agent that treats a data box like an
-IMAP inbox will cause real legal consequences:
+the legal machinery of the system, and an agent that treats a datová schránka
+like an IMAP inbox will cause real legal consequences:
 
 1. **Reading triggers delivery.** Listing received messages - whether by logging
    in or via the API (delivery event **EV13**) - marks *all* messages in the box
@@ -183,7 +183,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 ## ⚠️ Disclaimer
 
 **Agentovka is an independent open-source project.** The name *Agentovka* is a
-play on *datovka* (data box): an **agent's** data box.
+play on *datovka* (datová schránka): an **agent's** datovka.
 
 **This project is not a legal service.** The information about delivery, fiction
 of delivery, deadlines and archiving is provided for engineering context and may
