@@ -221,13 +221,21 @@ def test_auth_error_from_transport_401(client: IsdsClient) -> None:
 
 
 def test_find_databox_falls_back_to_name_for_7char_query(client: IsdsClient) -> None:
-    """A 7-char lowercase query that matches no box ID retries as a name."""
+    """A 7-char lowercase query that matches no box ID retries as a name.
+
+    Unused search fields are sent as zeep SkipValue (omitted from the XML),
+    and a name search fans out over the four box types (dbType is mandatory
+    for name searches, ISDS error 1101).
+    """
     calls: list[dict[str, Any]] = []
+
+    def _filled(payload: dict[str, Any]) -> dict[str, Any]:
+        return {k: v for k, v in payload.items() if isinstance(v, str)}
 
     class _Op:
         def __call__(self, *, dbOwnerInfo: dict[str, Any]) -> Any:
-            calls.append(dbOwnerInfo)
-            if "dbID" in dbOwnerInfo:
+            calls.append(_filled(dbOwnerInfo))
+            if "dbID" in _filled(dbOwnerInfo):
                 return {
                     "dbResults": None,
                     "dbStatus": {"dbStatusCode": "0000", "dbStatusMessage": "OK"},
@@ -255,5 +263,9 @@ def test_find_databox_falls_back_to_name_for_7char_query(client: IsdsClient) -> 
 
     client._clients["db_search"] = _Cl()  # type: ignore[assignment]
     boxes = client.find_databox("tescoma")
-    assert [c.get("dbID", c.get("firmName")) for c in calls] == ["tescoma", "tescoma"]
+    assert calls[0] == {"dbID": "tescoma"}
+    assert [c["firmName"] for c in calls[1:]] == ["tescoma"] * 4
+    assert [c["dbType"] for c in calls[1:]] == ["OVM", "PO", "PFO", "FO"]
+    # The same box returned for every type is deduplicated by box ID.
+    assert len(boxes) == 1
     assert boxes[0].name == "Tescoma"

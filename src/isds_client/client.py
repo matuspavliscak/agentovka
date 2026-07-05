@@ -36,6 +36,7 @@ from requests import Session
 from requests.auth import HTTPBasicAuth
 from zeep import Client, Settings
 from zeep import exceptions as zeep_exceptions
+from zeep import xsd as zeep_xsd
 from zeep.transports import Transport
 
 from isds_client.errors import IsdsAuthError, IsdsResponseError
@@ -72,6 +73,39 @@ _SERVICE_PATH: dict[str, str] = {
     "dm_info": "dx",
     "dm_operations": "dz",
 }
+
+# Element sequence of tDbOwnerInfo in dbTypes.xsd. Every element is required
+# by the schema, so FindDataBox requests must name each one - filled with a
+# value or explicitly skipped (zeep xsd.SkipValue).
+_DB_OWNER_INFO_ELEMENTS: tuple[str, ...] = (
+    "dbID",
+    "dbType",
+    "ic",
+    "pnFirstName",
+    "pnMiddleName",
+    "pnLastName",
+    "pnLastNameAtBirth",
+    "firmName",
+    "biDate",
+    "biCity",
+    "biCounty",
+    "biState",
+    "adCity",
+    "adStreet",
+    "adNumberInStreet",
+    "adNumberInMunicipality",
+    "adZipCode",
+    "adState",
+    "adUnstruct",
+    "nationality",
+    "email",
+    "telNumber",
+    "identifier",
+    "registryCode",
+    "dbState",
+    "dbEffectiveOVM",
+    "dbOpenAddressing",
+)
 
 _WSDL_FILE: dict[str, str] = {
     "db_access": "db_access.wsdl",
@@ -157,12 +191,20 @@ class IsdsClient:
 
     def get_owner_info(self) -> OwnerInfo:
         """GetOwnerInfoFromLogin - info about the authenticated box. Safe."""
-        resp = self._call("db_access", "GetOwnerInfoFromLogin")
+        # The request schema (tDummyInput) requires a dbDummy string element;
+        # ISDS ignores its value but the serializer must include it.
+        resp = self._call("db_access", "GetOwnerInfoFromLogin", dbDummy="")
         _check_db(resp)
         owner = resp["dbOwnerInfo"]
+        # FO/PFO boxes carry the owner's name in pnFirstName/pnLastName;
+        # firmName is only set for PO/OVM boxes.
+        person_name = " ".join(
+            p for p in (_get(owner, "pnFirstName"), _get(owner, "pnLastName")) if p
+        )
         return OwnerInfo(
             dbID=owner["dbID"],
             dbType=str(owner["dbType"]) if owner["dbType"] is not None else None,
+            name=person_name or None,
             firmName=owner["firmName"],
             ic=owner["ic"],
             dbState=owner["dbState"],
@@ -187,17 +229,35 @@ class IsdsClient:
                 boxes = []
             if boxes:
                 return boxes
-        return self._find_databox_by({"firmName": q})
+        # A name search requires dbType (ISDS error 1101 without it), so try
+        # each box type and merge, deduplicating by box ID.
+        found: dict[str, DataBox] = {}
+        for db_type in ("OVM", "PO", "PFO", "FO"):
+            try:
+                boxes = self._find_databox_by({"firmName": q, "dbType": db_type})
+            except IsdsResponseError:
+                continue
+            for box in boxes:
+                if box.box_id and box.box_id not in found:
+                    found[box.box_id] = box
+        return list(found.values())
 
     def _find_databox_by(self, owner_info: dict[str, Any]) -> list[DataBox]:
-        resp = self._call("db_search", "FindDataBox", dbOwnerInfo=owner_info)
-        _check_db(resp)
-        results = resp["dbResults"]
-        if results is None:
+        # The live ISDS parser rejects xsi:nil placeholders for unused search
+        # fields (error 2004), so send only the filled elements and skip the
+        # rest of the tDbOwnerInfo sequence entirely (as libisds does).
+        payload = {
+            name: owner_info.get(name, zeep_xsd.SkipValue) for name in _DB_OWNER_INFO_ELEMENTS
+        }
+        resp = self._call("db_search", "FindDataBox", dbOwnerInfo=payload)
+        # FindDataBox-specific statuses: 0002 = no box matches (an empty
+        # result, not an error), 0003 = result list truncated (still data).
+        code = _get(resp, "dbStatus", "dbStatusCode")
+        if code == "0002":
             return []
-        boxes = results["dbOwnerInfo"]
-        if boxes is None:
-            return []
+        if code != "0003":
+            _check_db(resp)
+        boxes = _unwrap_repeated(resp["dbResults"], "dbOwnerInfo")
         return [_to_databox(b) for b in boxes]
 
     def get_list_of_sent_messages(
@@ -339,6 +399,20 @@ def _get(obj: Any, *path: str) -> Any:
     return cur
 
 
+def _unwrap_repeated(container: Any, name: str) -> list[Any]:
+    """Unwrap an ISDS array type whose whole <sequence> repeats.
+
+    zeep exposes such arrays (tDbOwnersArray, tRecordsArray, tEventsArray) as
+    ``_value_1 = [{name: {...}}, ...]`` rather than a flat list under ``name``.
+    """
+    if container is None:
+        return []
+    rows = getattr(container, "_value_1", None)
+    if rows is not None:
+        return [row[name] for row in rows]
+    return _get(container, name) or []
+
+
 def _to_databox(b: Any) -> DataBox:
     return DataBox(
         dbID=b["dbID"],
@@ -359,19 +433,22 @@ def _status_from_int(value: Any) -> MessageStatus | None:
 
 
 def _record_to_envelope(rec: Any) -> MessageEnvelope:
+    # Tolerant lookups throughout: depending on the operation, the envelope
+    # comes as tRecord (status/times inline) or as tDelivery's dmDm (only the
+    # gMessageEnvelope group - status/times live as SIBLINGS of dmDm).
     return MessageEnvelope(
-        dmID=str(rec["dmID"]),
-        dbIDSender=rec["dbIDSender"],
-        dmSender=rec["dmSender"],
-        dmSenderAddress=rec["dmSenderAddress"],
-        dbIDRecipient=rec["dbIDRecipient"],
-        dmRecipient=rec["dmRecipient"],
-        dmRecipientAddress=rec["dmRecipientAddress"],
-        dmAnnotation=rec["dmAnnotation"],
-        dmMessageStatus=_status_from_int(rec["dmMessageStatus"]),
-        dmDeliveryTime=rec["dmDeliveryTime"],
-        dmAcceptanceTime=rec["dmAcceptanceTime"],
-        dmAttachmentSize=rec["dmAttachmentSize"],
+        dmID=str(_get(rec, "dmID")),
+        dbIDSender=_get(rec, "dbIDSender"),
+        dmSender=_get(rec, "dmSender"),
+        dmSenderAddress=_get(rec, "dmSenderAddress"),
+        dbIDRecipient=_get(rec, "dbIDRecipient"),
+        dmRecipient=_get(rec, "dmRecipient"),
+        dmRecipientAddress=_get(rec, "dmRecipientAddress"),
+        dmAnnotation=_get(rec, "dmAnnotation"),
+        dmMessageStatus=_status_from_int(_get(rec, "dmMessageStatus")),
+        dmDeliveryTime=_get(rec, "dmDeliveryTime"),
+        dmAcceptanceTime=_get(rec, "dmAcceptanceTime"),
+        dmAttachmentSize=_get(rec, "dmAttachmentSize"),
         dmSenderRefNumber=_get(rec, "dmSenderRefNumber"),
         dmRecipientRefNumber=_get(rec, "dmRecipientRefNumber"),
         dmToHands=_get(rec, "dmToHands"),
@@ -380,24 +457,20 @@ def _record_to_envelope(rec: Any) -> MessageEnvelope:
 
 def _records_to_envelopes(resp: Any) -> list[MessageEnvelope]:
     _check_dm(resp)
-    records = resp["dmRecords"]
-    if records is None:
-        return []
-    items = records["dmRecord"]
-    if items is None:
-        return []
+    items = _unwrap_repeated(resp["dmRecords"], "dmRecord")
     return [_record_to_envelope(r) for r in items]
 
 
 def _to_delivery_info(returned: Any) -> DeliveryInfo:
     dm = _get(returned, "dmDm")
     envelope = _record_to_envelope(dm) if dm is not None else MessageEnvelope(dmID="")
-    events_container = _get(returned, "dmEvents")
-    events: list[DeliveryEvent] = []
-    if events_container is not None:
-        raw_events = events_container["dmEvent"] or []
-        for ev in raw_events:
-            events.append(
-                DeliveryEvent(dmEventTime=ev["dmEventTime"], dmEventDescr=ev["dmEventDescr"])
-            )
+    # In tDelivery the delivery time/acceptance time/status are siblings of
+    # dmDm, not members of it - overlay them onto the envelope.
+    envelope.delivery_time = envelope.delivery_time or _get(returned, "dmDeliveryTime")
+    envelope.acceptance_time = envelope.acceptance_time or _get(returned, "dmAcceptanceTime")
+    envelope.status = envelope.status or _status_from_int(_get(returned, "dmMessageStatus"))
+    events = [
+        DeliveryEvent(dmEventTime=_get(ev, "dmEventTime"), dmEventDescr=_get(ev, "dmEventDescr"))
+        for ev in _unwrap_repeated(_get(returned, "dmEvents"), "dmEvent")
+    ]
     return DeliveryInfo(envelope=envelope, events=events)
