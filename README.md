@@ -153,6 +153,34 @@ Setup:
    datovka" - the safety model (delivery acknowledgment, dry-run sending)
    applies exactly as described above.
 
+### Scheduled archive to Google Drive
+
+[`scripts/archive_to_drive.py`](scripts/archive_to_drive.py) downloads every
+received message not yet archived and uploads the signed ZFO, all attachments
+and metadata to a Google Drive folder - one subfolder per message.
+
+> **This deliberately triggers delivery (EV13).** Running it on a schedule
+> means your mail is legally delivered on that schedule - no 10-day fiction,
+> deadlines start immediately. In exchange, nothing is ever lost to the 90-day
+> deletion. Make this trade-off consciously; see
+> [docs/delivery-semantics.md](docs/delivery-semantics.md).
+
+Setup:
+
+1. Create a Google Cloud **service account** (no roles needed), download its
+   JSON key, and enable the **Google Drive API** in the project.
+2. Create a Drive folder and **share it with the service account's e-mail**
+   (Editor role); note the folder ID from its URL.
+3. Provide the environment variables `GOOGLE_SERVICE_ACCOUNT_JSON` (key JSON
+   or a path to it) and `GOOGLE_DRIVE_FOLDER_ID`, alongside
+   `ISDS_USERNAME`/`ISDS_PASSWORD`.
+4. Run manually or on a schedule:
+
+```bash
+uv run --group drive python scripts/archive_to_drive.py --dry-run   # list only
+uv run --group drive python scripts/archive_to_drive.py             # archive
+```
+
 ## Using the library standalone
 
 ```python
