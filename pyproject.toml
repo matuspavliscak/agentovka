@@ -44,10 +44,6 @@ dev = [
     "ruff>=0.8",
     "mypy>=1.13",
 ]
-# For scripts/archive_to_drive.py (Google Drive archive routine).
-drive = [
-    "google-auth>=2.23",
-]
 
 [build-system]
 requires = ["hatchling"]
