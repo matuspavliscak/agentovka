@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "agentovka": {
+      "command": "uv",
+      "args": ["run", "agentovka"]
+    }
+  }
+}

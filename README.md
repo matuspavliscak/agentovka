@@ -133,6 +133,26 @@ Add to your MCP client config (e.g. `claude_desktop_config.json`):
 
 See [`examples/`](https://github.com/matuspavliscak/agentovka/tree/main/examples) for ready-to-copy configs.
 
+### Claude Code on the web & mobile
+
+This repository ships a project-scoped [`.mcp.json`](.mcp.json) and a
+SessionStart hook, so any **Claude Code session on this repo** (web at
+[claude.ai/code](https://claude.ai/code), or the Claude mobile app's Code tab)
+gets the agentovka tools automatically - you can read your datová schránka
+from your phone.
+
+Setup:
+
+1. In your Claude Code environment settings, add the environment variables
+   `ISDS_USERNAME` and `ISDS_PASSWORD` (test-box credentials; credentials
+   never go into the repo). Optionally `AGENTOVKA_ALLOW_SEND=true` to enable
+   real sending.
+2. Make sure the environment's network policy allows `ws1.czebox.cz`
+   (test) - or `ws1.mojedatovaschranka.cz` if you configure production.
+3. Start a session on this repository and ask Claude to, e.g., "check my
+   datovka" - the safety model (delivery acknowledgment, dry-run sending)
+   applies exactly as described above.
+
 ## Using the library standalone
 
 ```python
