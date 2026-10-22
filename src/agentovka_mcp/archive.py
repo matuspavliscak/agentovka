@@ -2,11 +2,13 @@
 
 ISDS permanently deletes messages 90 days after delivery, and the Portál
 občana auto-archiving is known to miss messages delivered by fiction. This
-archive keeps everything that passes through ``download_message``:
+archive keeps everything that passes through ``download_message`` (received)
+and ``download_sent_message`` (sent). Direction is recorded on each row so the
+archive covers both sides of the correspondence:
 
     <archive_dir>/<environment>/<message_id>/
         message.zfo          - original signed message, verbatim
-        metadata.json        - envelope, timestamps, sha256 of the ZFO
+        metadata.json        - envelope, direction, timestamps, sha256 of the ZFO
         attachments/<name>   - extracted files
 
 plus an SQLite database (index.db) with an FTS5 full-text index over subject,
@@ -36,6 +38,7 @@ CREATE TABLE IF NOT EXISTS messages (
     acceptance_time TEXT,
     status INTEGER,
     zfo_sha256 TEXT,
+    direction TEXT NOT NULL DEFAULT 'received',
     archived_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     PRIMARY KEY (message_id, environment)
 );
@@ -61,6 +64,17 @@ _SAFE_COMPONENT = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 class UnsafeIdentifierError(ValueError):
     """A message_id is not a safe filesystem path component."""
+
+
+# received = downloaded from the received store (SignedMessageDownload).
+# sent = downloaded from the sent store (SignedSentMessageDownload).
+_DIRECTIONS = frozenset({"received", "sent"})
+
+
+def _require_direction(direction: str) -> str:
+    if direction not in _DIRECTIONS:
+        raise ValueError("direction must be 'received' or 'sent'")
+    return direction
 
 
 def _safe_component(value: str) -> str:
@@ -92,6 +106,7 @@ def safe_filename(name: str) -> str:
 class ArchivedMessage:
     message_id: str
     environment: str
+    direction: str
     subject: str | None
     sender: str | None
     recipient: str | None
@@ -109,7 +124,20 @@ class Archive:
         self._db = sqlite3.connect(self.root / "index.db")
         self._db.row_factory = sqlite3.Row
         self._db.executescript(_SCHEMA)
+        self._ensure_direction_column()
         self._db.commit()
+
+    def _ensure_direction_column(self) -> None:
+        """Add ``direction`` to archives created before sent messages were stored.
+
+        ``CREATE TABLE IF NOT EXISTS`` does not alter an existing table. Rows
+        already on disk are received messages; the column default records that.
+        """
+        cols = {row[1] for row in self._db.execute("PRAGMA table_info(messages)")}
+        if "direction" not in cols:
+            self._db.execute(
+                "ALTER TABLE messages ADD COLUMN direction TEXT NOT NULL DEFAULT 'received'"
+            )
 
     def close(self) -> None:
         self._db.close()
@@ -122,8 +150,16 @@ class Archive:
         zfo_bytes: bytes,
         files: list[DmFile],
         events: list[DeliveryEvent] | None = None,
+        *,
+        direction: str = "received",
     ) -> Path:
-        """Persist a downloaded message; idempotent per (message_id, environment)."""
+        """Persist a downloaded message; idempotent per (message_id, environment).
+
+        ``direction`` is ``received`` (SignedMessageDownload) or ``sent``
+        (SignedSentMessageDownload). Storing the same id again replaces the
+        previous ZFO, attachments and direction.
+        """
+        direction = _require_direction(direction)
         message_id = _safe_component(envelope.message_id)
         msg_dir = self.root / self.environment / message_id
         att_dir = msg_dir / "attachments"
@@ -149,6 +185,7 @@ class Archive:
         metadata = {
             "envelope": envelope.model_dump(mode="json", by_alias=True),
             "environment": self.environment,
+            "direction": direction,
             "zfo_sha256": hashlib.sha256(zfo_bytes).hexdigest(),
             "attachments": saved_files,
             "delivery_events": [e.model_dump(mode="json", by_alias=True) for e in (events or [])],
@@ -165,8 +202,8 @@ class Archive:
             self._db.execute(
                 """INSERT OR REPLACE INTO messages
                    (message_id, environment, subject, sender, recipient,
-                    delivery_time, acceptance_time, status, zfo_sha256)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    delivery_time, acceptance_time, status, zfo_sha256, direction)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     envelope.message_id,
                     self.environment,
@@ -177,6 +214,7 @@ class Archive:
                     envelope.acceptance_time.isoformat() if envelope.acceptance_time else None,
                     int(envelope.status) if envelope.status is not None else None,
                     metadata["zfo_sha256"],
+                    direction,
                 ),
             )
             self._db.execute(
@@ -199,6 +237,7 @@ class Archive:
         return ArchivedMessage(
             message_id=row["message_id"],
             environment=row["environment"],
+            direction=row["direction"],
             subject=row["subject"],
             sender=row["sender"],
             recipient=row["recipient"],
@@ -208,29 +247,52 @@ class Archive:
             directory=self.root / row["environment"] / row["message_id"],
         )
 
-    def list_messages(self, limit: int = 100) -> list[ArchivedMessage]:
-        rows = self._db.execute(
-            "SELECT * FROM messages WHERE environment = ? ORDER BY delivery_time DESC LIMIT ?",
-            (self.environment, limit),
-        ).fetchall()
+    def list_messages(
+        self, limit: int = 100, *, direction: str | None = None
+    ) -> list[ArchivedMessage]:
+        if direction is None:
+            rows = self._db.execute(
+                "SELECT * FROM messages WHERE environment = ? ORDER BY delivery_time DESC LIMIT ?",
+                (self.environment, limit),
+            ).fetchall()
+        else:
+            direction = _require_direction(direction)
+            rows = self._db.execute(
+                "SELECT * FROM messages WHERE environment = ? AND direction = ? "
+                "ORDER BY delivery_time DESC LIMIT ?",
+                (self.environment, direction, limit),
+            ).fetchall()
         return [self._row_to_message(r) for r in rows]
 
-    def search(self, query: str, limit: int = 50) -> list[ArchivedMessage]:
+    def search(
+        self, query: str, limit: int = 50, *, direction: str | None = None
+    ) -> list[ArchivedMessage]:
         """Full-text search over subject/sender/recipient/attachment text.
 
         The query is passed to FTS5 as-is first (so advanced syntax works); if
         FTS5 rejects it (slashes, colons, unbalanced quotes - e.g. a case
         number like "123/2026"), it is retried as a quoted literal phrase.
+        ``direction``, when set, restricts hits to ``received`` or ``sent``.
         """
-        sql = """SELECT m.* FROM messages_fts f
+        extra: tuple[Any, ...] = (limit,)
+        direction_sql = ""
+        if direction is not None:
+            direction = _require_direction(direction)
+            direction_sql = " AND m.direction = ?"
+            extra = (direction, limit)
+        sql = f"""SELECT m.* FROM messages_fts f
                JOIN messages m ON m.message_id = f.message_id AND m.environment = f.environment
-               WHERE messages_fts MATCH ? AND f.environment = ?
+               WHERE messages_fts MATCH ? AND f.environment = ?{direction_sql}
                ORDER BY rank LIMIT ?"""
+
+        def _run(q: str) -> list[sqlite3.Row]:
+            return self._db.execute(sql, (q, self.environment, *extra)).fetchall()
+
         try:
-            rows = self._db.execute(sql, (query, self.environment, limit)).fetchall()
+            rows = _run(query)
         except sqlite3.OperationalError:
             phrase = '"' + query.replace('"', '""') + '"'
-            rows = self._db.execute(sql, (phrase, self.environment, limit)).fetchall()
+            rows = _run(phrase)
         return [self._row_to_message(r) for r in rows]
 
     def get(self, message_id: str) -> dict[str, Any] | None:
@@ -243,6 +305,16 @@ class Archive:
         if not meta_path.exists():
             return None
         data: dict[str, Any] = json.loads(meta_path.read_text(encoding="utf-8"))
+        # The index is the source of truth for direction (older metadata.json
+        # files predate the field; the migration defaults those rows to received).
+        row = self._db.execute(
+            "SELECT direction FROM messages WHERE message_id = ? AND environment = ?",
+            (message_id, self.environment),
+        ).fetchone()
+        if row is not None:
+            data["direction"] = row["direction"]
+        else:
+            data.setdefault("direction", "received")
         data["directory"] = str(meta_path.parent)
         return data
 

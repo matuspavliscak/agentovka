@@ -4,12 +4,13 @@ A safety-first MCP wrapper over :mod:`isds_client`. Tools are grouped into three
 classes, reflected in their names, descriptions and annotations:
 
   Class A - safe, no legal consequences (searching, own-box info, local archive,
-            deadline arithmetic). readOnlyHint = True.
+            sent-message list and download, deadline arithmetic). readOnlyHint = True.
   Class B - DELIVERY-TRIGGERING. Reading the received list or downloading a
             received message counts as a login via the application interface
             (event EV13) and legally delivers every message in the box, starting
             statutory deadlines. These tools require the caller to pass
-            acknowledge_delivery_trigger=True.
+            acknowledge_delivery_trigger=True. Downloading a *sent* message does
+            not: it is class A and must not require that acknowledgement.
   Class C - legal act: sending a data message. Guarded by dry_run (default True)
             AND the AGENTOVKA_ALLOW_SEND=true environment variable.
 
@@ -54,7 +55,9 @@ mcp = FastMCP(
         "tools (list_received_messages, download_message) TRIGGER LEGAL DELIVERY of "
         "all messages in the box and require acknowledge_delivery_trigger=True - "
         "never call them to merely 'check' for mail unless the user understands "
-        "that deadlines will start. Class C (send_message) performs a legal act "
+        "that deadlines will start. download_sent_message archives a message this "
+        "box sent and does NOT trigger delivery (no acknowledgement parameter). "
+        "Class C (send_message) performs a legal act "
         "and is disabled unless the operator sets AGENTOVKA_ALLOW_SEND=true. "
         "Prefer reading from the local archive when possible."
     ),
@@ -135,18 +138,26 @@ def get_databox_info() -> dict[str, Any]:
     annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
     description=(
         "SAFE (třída A). Vypíše zprávy uložené v LOKÁLNÍM archivu (žádné volání "
-        "ISDS). Lists messages already stored in the local archive. No ISDS call, "
-        "no delivery."
+        "ISDS), včetně směru received/sent. Lists messages already stored in the "
+        "local archive, each with its direction. No ISDS call, no delivery."
     ),
 )
 def list_archived_messages(
     limit: Annotated[int, Field(description="Max messages to return", ge=1, le=1000)] = 100,
+    direction: Annotated[
+        str | None,
+        Field(description="Optional filter: 'received' or 'sent'. Omit to list both."),
+    ] = None,
 ) -> dict[str, Any]:
-    msgs = get_archive().list_messages(limit=limit)
+    try:
+        msgs = get_archive().list_messages(limit=limit, direction=direction)
+    except ValueError as exc:
+        return {"error": str(exc)}
     return {
         "messages": [
             {
                 "message_id": m.message_id,
+                "direction": m.direction,
                 "subject": m.subject,
                 "sender": m.sender,
                 "delivery_time": m.delivery_time,
@@ -161,8 +172,9 @@ def list_archived_messages(
 @mcp.tool(
     annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
     description=(
-        "SAFE (třída A). Přečte jednu zprávu z LOKÁLNÍHO archivu včetně metadat a "
-        "seznamu příloh. Reads one message from the local archive. No ISDS call."
+        "SAFE (třída A). Přečte jednu zprávu z LOKÁLNÍHO archivu včetně metadat, "
+        "směru (received/sent) a seznamu příloh. Reads one message from the local "
+        "archive, including its direction. No ISDS call."
     ),
 )
 def read_archived_message(
@@ -182,20 +194,33 @@ def read_archived_message(
     annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False),
     description=(
         "SAFE (třída A). Fulltextové vyhledávání v LOKÁLNÍM archivu (předmět, "
-        "odesílatel, text příloh). Full-text search over the local archive."
+        "odesílatel, text příloh), volitelně jen received nebo sent. Full-text "
+        "search over the local archive. Each hit includes direction."
     ),
 )
 def search_archive(
     query: Annotated[str, Field(description="Full-text query (SQLite FTS5 syntax)")],
     limit: Annotated[int, Field(ge=1, le=200)] = 50,
+    direction: Annotated[
+        str | None,
+        Field(description="Optional filter: 'received' or 'sent'. Omit to search both."),
+    ] = None,
 ) -> dict[str, Any]:
     try:
-        msgs = get_archive().search(query, limit=limit)
+        msgs = get_archive().search(query, limit=limit, direction=direction)
+    except ValueError as exc:
+        return {"error": str(exc)}
     except sqlite3.Error as exc:
         return {"error": f"invalid search query: {exc}"}
     return {
         "messages": [
-            {"message_id": m.message_id, "subject": m.subject, "sender": m.sender} for m in msgs
+            {
+                "message_id": m.message_id,
+                "direction": m.direction,
+                "subject": m.subject,
+                "sender": m.sender,
+            }
+            for m in msgs
         ]
     }
 
@@ -279,13 +304,15 @@ def list_received_messages(
 @mcp.tool(
     annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=True),
     description=(
-        "TŘÍDA B - SPOUŠTÍ DORUČENÍ. " + _DELIVERY_WARNING + " Downloads the signed "
-        "message (ZFO) from ISDS, stores it in the local archive, extracts "
-        "attachments, and returns metadata + text. Requires acknowledge_delivery_trigger=True."
+        "TŘÍDA B - SPOUŠTÍ DORUČENÍ. " + _DELIVERY_WARNING + " Downloads a signed "
+        "RECEIVED message (SignedMessageDownload, ZFO) from ISDS, stores it in the "
+        "local archive with direction=received, extracts attachments, and returns "
+        "metadata + text. Requires acknowledge_delivery_trigger=True. A sent dmID "
+        "is not in this store (ISDS error 1219); use download_sent_message for that."
     ),
 )
 def download_message(
-    message_id: Annotated[str, Field(description="ISDS message ID (dmID)")],
+    message_id: Annotated[str, Field(description="ISDS message ID (dmID) of a received message")],
     acknowledge_delivery_trigger: Annotated[
         bool, Field(description="Must be True; acknowledges EV13 delivery trigger.")
     ] = False,
@@ -302,7 +329,18 @@ def download_message(
         zfo_bytes = get_client().signed_message_download(message_id)
     except IsdsError as exc:
         return {"error": str(exc)}
+    return _archive_downloaded(zfo_bytes, direction="received", delivery_triggered=True)
 
+
+def _archive_downloaded(
+    zfo_bytes: bytes, *, direction: str, delivery_triggered: bool
+) -> dict[str, Any]:
+    """Parse a signed ZFO, store it, and return the tool payload.
+
+    Shared by the received (class B) and sent (class A) download tools. The
+    caller decides ``direction`` and whether the ISDS call triggered delivery;
+    this function only touches the local archive.
+    """
     try:
         parsed = parse_zfo(zfo_bytes)
     except ZfoParseError as exc:
@@ -310,7 +348,9 @@ def download_message(
 
     archive = get_archive()
     try:
-        msg_dir = archive.store(parsed.envelope, zfo_bytes, parsed.files, parsed.events)
+        msg_dir = archive.store(
+            parsed.envelope, zfo_bytes, parsed.files, parsed.events, direction=direction
+        )
     except UnsafeIdentifierError as exc:
         return {"error": f"refusing to archive message with unsafe id: {exc}"}
 
@@ -325,7 +365,8 @@ def download_message(
             )
 
     return {
-        "delivery_triggered": True,
+        "delivery_triggered": delivery_triggered,
+        "direction": direction,
         "archived_to": str(msg_dir),
         "envelope": _envelope_dict(parsed.envelope),
         "attachments": [
@@ -347,9 +388,11 @@ def download_message(
 # ======================================================================
 # Class A/B boundary - sent messages & delivery receipts
 # ======================================================================
-# Listing SENT messages and reading delivery receipts (doručenky) of one's own
-# sent messages do NOT access the received store and therefore do NOT trigger
-# delivery of received messages. See docs/delivery-semantics.md. Classified A.
+# Listing SENT messages, downloading their signed content and reading delivery
+# receipts (doručenky) of one's own sent messages do NOT access the received
+# store and therefore do NOT trigger delivery of received messages. See
+# docs/delivery-semantics.md. Classified A. Provozní řád ISDS chapter 8 ties
+# delivery under § 17 (3) of Act No. 300/2008 Coll. to GetListOfReceivedMessages.
 
 
 @mcp.tool(
@@ -368,6 +411,27 @@ def list_sent_messages(
     except IsdsError as exc:
         return {"error": str(exc)}
     return {"messages": [_envelope_dict(m) for m in msgs]}
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True),
+    description=(
+        "SAFE (třída A). Stáhne podepsanou ODESLANOU zprávu (SignedSentMessageDownload, "
+        "ZFO), uloží ji do lokálního archivu se směrem sent a rozbalí přílohy. "
+        "Stažení odeslané zprávy nespouští doručení přijatých zpráv a nevyžaduje "
+        "acknowledge_delivery_trigger. Downloads a signed SENT message, stores the "
+        "ZFO in the local archive (direction=sent) and extracts attachments. Does "
+        "not trigger delivery of received messages."
+    ),
+)
+def download_sent_message(
+    message_id: Annotated[str, Field(description="ISDS message ID (dmID) of a sent message")],
+) -> dict[str, Any]:
+    try:
+        zfo_bytes = get_client().signed_sent_message_download(message_id)
+    except IsdsError as exc:
+        return {"error": str(exc)}
+    return _archive_downloaded(zfo_bytes, direction="sent", delivery_triggered=False)
 
 
 @mcp.tool(

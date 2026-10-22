@@ -94,6 +94,83 @@ def test_search_falls_back_for_fts_syntax(tmp_path: Path, sample_zfo: bytes) -> 
     assert [m.message_id for m in hits] == ["10123456"]
 
 
+def test_direction_recorded_and_filterable(tmp_path: Path, sample_zfo: bytes) -> None:
+    archive = make_archive(tmp_path)
+    parsed = parse_zfo(sample_zfo)
+    archive.store(parsed.envelope, sample_zfo, parsed.files)
+    assert archive.list_messages()[0].direction == "received"
+    loaded = archive.get("10123456")
+    assert loaded is not None
+    assert loaded["direction"] == "received"
+
+    parsed.envelope.message_id = "20202020"
+    parsed.envelope.subject = "Odeslané podání"
+    archive.store(parsed.envelope, sample_zfo, parsed.files, direction="sent")
+
+    by_id = {m.message_id: m.direction for m in archive.list_messages()}
+    assert by_id == {"10123456": "received", "20202020": "sent"}
+    assert [m.message_id for m in archive.list_messages(direction="sent")] == ["20202020"]
+    assert [m.message_id for m in archive.search("podání", direction="sent")] == ["20202020"]
+    assert archive.search("podání", direction="received") == []
+
+    sent = archive.get("20202020")
+    assert sent is not None
+    assert sent["direction"] == "sent"
+    assert (
+        json.loads((tmp_path / "archive" / "test" / "20202020" / "metadata.json").read_text())[
+            "direction"
+        ]
+        == "sent"
+    )
+
+    with pytest.raises(ValueError, match="direction"):
+        archive.store(parsed.envelope, sample_zfo, parsed.files, direction="out")
+
+
+def test_direction_column_migrates_existing_archive(tmp_path: Path) -> None:
+    """Archives created before direction existed default stored rows to received."""
+    import sqlite3
+
+    root = tmp_path / "archive"
+    root.mkdir()
+    db = sqlite3.connect(root / "index.db")
+    db.executescript(
+        """
+        CREATE TABLE messages (
+            message_id TEXT NOT NULL,
+            environment TEXT NOT NULL,
+            subject TEXT,
+            sender TEXT,
+            recipient TEXT,
+            delivery_time TEXT,
+            acceptance_time TEXT,
+            status INTEGER,
+            zfo_sha256 TEXT,
+            archived_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+            PRIMARY KEY (message_id, environment)
+        );
+        INSERT INTO messages (message_id, environment, subject, sender)
+        VALUES ('10123456', 'test', 'Stará zpráva', 'Úřad');
+        """
+    )
+    db.commit()
+    db.close()
+
+    msg_dir = root / "test" / "10123456"
+    msg_dir.mkdir(parents=True)
+    (msg_dir / "metadata.json").write_text(
+        json.dumps({"envelope": {"dmID": "10123456", "dmAnnotation": "Stará zpráva"}}),
+        encoding="utf-8",
+    )
+
+    archive = Archive(root, environment="test")
+    listed = archive.list_messages()
+    assert [(m.message_id, m.direction) for m in listed] == [("10123456", "received")]
+    loaded = archive.get("10123456")
+    assert loaded is not None
+    assert loaded["direction"] == "received"
+
+
 def test_fts_index_is_environment_scoped(tmp_path: Path, sample_zfo: bytes) -> None:
     root = tmp_path / "archive"
     test_arch = Archive(root, environment="test")

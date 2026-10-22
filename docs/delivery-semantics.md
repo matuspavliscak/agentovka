@@ -70,9 +70,11 @@ receipt (doručenka) remain available for longer. A paid *Datový trezor* (data
 vault) extends retention, but the free default is 90 days.
 
 This is the core reason for Agentovka's **local archive**: anything passing
-through `download_message` is stored verbatim (original signed ZFO + extracted
-attachments + metadata), so it survives the 90-day deletion **and** covers the
-fiction-delivery gap in Portál občana.
+through `download_message` (received) or `download_sent_message` (sent) is
+stored verbatim (original signed ZFO + extracted attachments + metadata, with
+`direction` recorded), so it survives the 90-day deletion **and** covers the
+fiction-delivery gap in Portál občana. Sent messages are deleted on the same
+schedule; archiving them keeps the content and attachments of what you filed.
 
 Sources:
 - Provozní řád ISDS, section on message retention (mojedatovaschranka.cz).
@@ -89,22 +91,29 @@ This is the crux of the safety model. **Delivery is triggered by accessing the
 | `GetListOfReceivedMessages` | dm_info (dx) | **YES** - counts as a login (EV13); delivers all *dodaná* messages | **B** |
 | `MessageEnvelopeDownload` / `SignedMessageDownload` / `MessageDownload` | dm_info / dm_operations | **YES** - downloading a received message delivers it | **B** |
 | `GetListOfSentMessages` | dm_info (dx) | No - operates on your *sent* messages | A |
+| `SignedSentMessageDownload` | dm_operations (dz) | No - signed ZFO of a message you sent; does not access the received store | A |
 | `GetDeliveryInfo` / `GetSignedDeliveryInfo` | dm_info (dx) | No - reads a delivery receipt; does not access the received store | A |
 | `FindDataBox` | db_search (df) | No - directory lookup | A |
 | `GetOwnerInfoFromLogin` | db_access (DsManage) | No - box metadata | A |
 | `CreateMessage` | dm_operations (dz) | N/A - sends (legal act) | C |
 
 The reasoning: legal delivery is tied to an **authorized person accessing the
-delivered document**. Listing your own sent messages or reading a delivery
-receipt of a message *you sent* does not access any recipient's undelivered
-document, so it does not start anyone's deadlines. Listing or downloading
-*received* messages does.
+delivered document**. Listing your own sent messages, downloading a signed copy
+of a message *you sent* (`SignedSentMessageDownload`), or reading a delivery
+receipt of that message does not access any recipient's undelivered document,
+so it does not start anyone's deadlines. Listing or downloading *received*
+messages does.
+
+`download_sent_message` is therefore class A. It does not take
+`acknowledge_delivery_trigger`. Provozní řád ISDS, chapter 8, ties delivery
+under § 17 (3) of Act No. 300/2008 Coll. to `GetListOfReceivedMessages`.
 
 > **Conservative stance.** Agentovka treats `list_received_messages` and any
 > download of a received message as delivery-triggering (class B) and blocks them
-> behind `acknowledge_delivery_trigger=true`. If you have an authoritative source
-> that narrows or widens this set, please open an issue - the classification is
-> documented here precisely so it can be reviewed.
+> behind `acknowledge_delivery_trigger=true`. That guard is unchanged.
+> `download_sent_message` / `SignedSentMessageDownload` stays outside it.
+> If you have an authoritative source that narrows or widens this set, please
+> open an issue - the classification is documented here precisely so it can be reviewed.
 
 Sources:
 - Provozní řád ISDS - *Aplikační rozhraní*, description of

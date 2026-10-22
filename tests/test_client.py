@@ -167,18 +167,85 @@ def test_list_received_messages(client: IsdsClient) -> None:
 
 
 def test_signed_message_download_returns_bytes(client: IsdsClient) -> None:
+    calls: list[dict[str, Any]] = []
+
+    class _Op:
+        def __call__(self, **kwargs: Any) -> Any:
+            calls.append(kwargs)
+            return {
+                "dmSignature": b"\x30\x82fake-cms",
+                "dmStatus": {"dmStatusCode": "0000", "dmStatusMessage": "OK"},
+            }
+
+    class _Svc:
+        SignedMessageDownload = _Op()
+
+    class _Cl:
+        service = _Svc()
+
+    client._clients["dm_operations"] = _Cl()  # type: ignore[assignment]
+    raw = client.signed_message_download("10123456")
+    assert raw == b"\x30\x82fake-cms"
+    assert calls == [{"dmID": "10123456"}]
+
+
+def test_signed_sent_message_download_returns_bytes(client: IsdsClient) -> None:
+    """SignedSentMessageDownload is a distinct dm_operations call (dmID in, dmSignature out)."""
+    calls: list[dict[str, Any]] = []
+
+    class _Op:
+        def __call__(self, **kwargs: Any) -> Any:
+            calls.append(kwargs)
+            return {
+                "dmSignature": b"\x30\x82sent-cms",
+                "dmStatus": {"dmStatusCode": "0000", "dmStatusMessage": "OK"},
+            }
+
+    class _Svc:
+        SignedSentMessageDownload = _Op()
+
+    class _Cl:
+        service = _Svc()
+
+    client._clients["dm_operations"] = _Cl()  # type: ignore[assignment]
+    raw = client.signed_sent_message_download("555000")
+    assert raw == b"\x30\x82sent-cms"
+    assert calls == [{"dmID": "555000"}]
+
+
+def test_signed_sent_message_download_error_1219(client: IsdsClient) -> None:
+    """A dmID that is not a sent message surfaces the ISDS status (e.g. 1219)."""
     _install(
         client,
         "dm_operations",
         {
-            "SignedMessageDownload": {
-                "dmSignature": b"\x30\x82fake-cms",
-                "dmStatus": {"dmStatusCode": "0000", "dmStatusMessage": "OK"},
+            "SignedSentMessageDownload": {
+                "dmSignature": None,
+                "dmStatus": {
+                    "dmStatusCode": "1219",
+                    "dmStatusMessage": "Zpráva 1 není v databázi.",
+                },
             }
         },
     )
-    raw = client.signed_message_download("10123456")
-    assert raw == b"\x30\x82fake-cms"
+    with pytest.raises(IsdsResponseError) as exc:
+        client.signed_sent_message_download("1")
+    assert exc.value.status_code == "1219"
+    assert "není v databázi" in exc.value.status_message
+
+
+def test_wsdl_declares_signed_sent_message_download() -> None:
+    """The bundled dm_operations contract names SignedSentMessageDownload and
+    returns the same tSignedMessDownOutput as SignedMessageDownload."""
+    from importlib import resources
+
+    wsdl_path = resources.files("isds_client.wsdl").joinpath("dm_operations.wsdl")
+    xsd_path = resources.files("isds_client.wsdl").joinpath("dmBaseTypes.xsd")
+    wsdl = wsdl_path.read_text(encoding="utf-8")
+    xsd = xsd_path.read_text(encoding="utf-8")
+    assert 'name="SignedSentMessageDownload"' in wsdl
+    assert 'name="SignedSentMessageDownload"' in xsd
+    assert 'name="SignedSentMessageDownloadResponse" type="tns:tSignedMessDownOutput"' in xsd
 
 
 def test_create_message_returns_id(client: IsdsClient) -> None:

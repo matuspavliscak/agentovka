@@ -19,9 +19,11 @@ DELIVERY SEMANTICS - read docs/delivery-semantics.md. Operations that touch the
     statutory deadlines start running.
 
 Operations on *sent* messages and on delivery receipts of one's own sent
-messages (``get_list_of_sent_messages``, ``get_delivery_info``,
-``get_signed_delivery_info``) do not access the recipient's received store and
-therefore do not trigger delivery of received messages.
+messages (``get_list_of_sent_messages``, ``signed_sent_message_download``,
+``get_delivery_info``, ``get_signed_delivery_info``) do not access the
+recipient's received store and therefore do not trigger delivery of received
+messages. Provozní řád ISDS, chapter 8, ties delivery under § 17 (3) of Act
+No. 300/2008 Coll. to ``GetListOfReceivedMessages``.
 """
 
 from __future__ import annotations
@@ -199,6 +201,18 @@ class IsdsClient:
         # before zeep ever parses the response; other transport errors propagate.
         return getattr(self._client(service).service, operation)(**kwargs)
 
+    def _download_signed(self, operation: str, message_id: str) -> bytes:
+        """Call a dm_operations signed-download and return raw ``dmSignature`` bytes.
+
+        Both ``SignedMessageDownload`` and ``SignedSentMessageDownload`` use
+        ``tIDMessInput`` (``dmID``) and ``tSignedMessDownOutput``
+        (``dmSignature`` + ``dmStatus``). Which store they read — and therefore
+        whether the call triggers delivery — is the caller's concern.
+        """
+        resp = self._call("dm_operations", operation, dmID=message_id)
+        _check_dm(resp)
+        return bytes(resp["dmSignature"])
+
     # -- class A: no legal consequences ---------------------------------
 
     def get_owner_info(self) -> OwnerInfo:
@@ -337,6 +351,18 @@ class IsdsClient:
         _check_dm(resp)
         return bytes(resp["dmSignature"])
 
+    def signed_sent_message_download(self, message_id: str) -> bytes:
+        """SignedSentMessageDownload - signed ZFO of a message this box sent.
+
+        Same wire shape as :meth:`signed_message_download` (``dmSignature``
+        bytes), but the operation is ``SignedSentMessageDownload`` on
+        ``dm_operations`` (``/DS/dz``). It reads the sent-message store only.
+        Per Provozní řád ISDS chapter 8, legal delivery under § 17 (3) of Act
+        No. 300/2008 Coll. is triggered by ``GetListOfReceivedMessages``, so
+        this call does not deliver received messages.
+        """
+        return self._download_signed("SignedSentMessageDownload", message_id)
+
     # -- class B: triggers delivery (EV13) ------------------------------
 
     def get_list_of_received_messages(
@@ -366,10 +392,13 @@ class IsdsClient:
         return _records_to_envelopes(resp)
 
     def signed_message_download(self, message_id: str) -> bytes:
-        """SignedMessageDownload - DELIVERY-TRIGGERING. Returns the raw signed ZFO bytes."""
-        resp = self._call("dm_operations", "SignedMessageDownload", dmID=message_id)
-        _check_dm(resp)
-        return bytes(resp["dmSignature"])
+        """SignedMessageDownload - DELIVERY-TRIGGERING. Returns the raw signed ZFO bytes.
+
+        Downloads a *received* message. For a message this box sent, use
+        :meth:`signed_sent_message_download` — ``SignedMessageDownload`` answers
+        a sent dmID with ISDS error 1219 (message is not in the received store).
+        """
+        return self._download_signed("SignedMessageDownload", message_id)
 
     def mark_message_as_downloaded(self, message_id: str) -> None:
         """MarkMessageAsDownloaded - flags a message as downloaded (removes the *new* flag)."""

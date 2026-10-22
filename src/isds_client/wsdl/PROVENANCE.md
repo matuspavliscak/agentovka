@@ -10,7 +10,7 @@ published as attachments to the *Provozní řád ISDS* (ISDS Operating Rules) at
 
 | File | Purpose |
 |------|---------|
-| `dm_operations.wsdl` | Message operations (send, download): CreateMessage, SignedMessageDownload, MessageDownload |
+| `dm_operations.wsdl` | Message operations (send, download): CreateMessage, SignedMessageDownload, SignedSentMessageDownload, MessageDownload |
 | `dm_info.wsdl` | Message info: GetListOfReceivedMessages, GetListOfSentMessages, delivery receipts |
 | `db_search.wsdl` | Datové schránky directory search: FindDataBox |
 | `db_access.wsdl` | Login-related services: GetOwnerInfoFromLogin, GetUserInfoFromLogin |

@@ -9,7 +9,9 @@ This package is usable without the MCP layer:
 
 Legal note: listing or downloading *received* messages counts as a login-based
 delivery event in ISDS (event EV13) and legally delivers all messages that are
-in the "delivered to box" (dodaná) state. See docs/delivery-semantics.md.
+in the "delivered to box" (dodaná) state. Downloading a *sent* message
+(``SignedSentMessageDownload``) does not access that store and does not trigger
+delivery. See docs/delivery-semantics.md.
 """
 
 from isds_client.client import IsdsClient, IsdsEnvironment
