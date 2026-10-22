@@ -22,7 +22,9 @@ dependencies = [
     "zeep>=4.2",
     "requests>=2.31",
     "pydantic>=2.7",
-    "mcp>=1.2",
+    # mcp 2.x removed mcp.server.fastmcp (FastMCP was renamed to MCPServer).
+    # The server still imports FastMCP; stay on 1.x until that migration.
+    "mcp>=1.2,<2",
     "holidays>=0.50",
     "asn1crypto>=1.5",
     "defusedxml>=0.7.1",

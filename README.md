@@ -62,19 +62,25 @@ MCP annotations:
 - `get_databox_info()` - info about your own box.
 - `list_archived_messages()`, `read_archived_message(id)`, `search_archive(q)` -
   read from the **local archive** only (no ISDS call).
-- `list_sent_messages()`, `get_delivery_receipt(id)` - sent messages and their
-  delivery receipts. These do **not** touch the received store and so do **not**
-  trigger delivery (see [delivery-semantics](https://github.com/matuspavliscak/agentovka/blob/main/docs/delivery-semantics.md#4-which-operations-trigger-delivery--kter%C3%A9-operace-spou%C5%A1t%C4%9Bj%C3%AD-doru%C4%8Den%C3%AD)).
+- `list_sent_messages()`, `download_sent_message(id)`, `get_delivery_receipt(id)` -
+  sent messages, their signed content (ZFO) and delivery receipts. These do **not**
+  touch the received store and so do **not** trigger delivery
+  (see [delivery-semantics](https://github.com/matuspavliscak/agentovka/blob/main/docs/delivery-semantics.md#4-which-operations-trigger-delivery--kter%C3%A9-operace-spou%C5%A1t%C4%9Bj%C3%AD-doru%C4%8Den%C3%AD)).
+  `download_sent_message` calls `SignedSentMessageDownload`, stores the ZFO in the
+  local archive with `direction=sent` and does **not** take
+  `acknowledge_delivery_trigger`.
 - `get_delivery_deadline(delivery_date)` - computes the fiction-of-delivery date
   (D+10, shifted to the next working day) using Czech public holidays.
 
 ### Class B - triggers delivery (event EV13)
-- `list_received_messages(...)`, `download_message(id)`.
+- `list_received_messages(...)`, `download_message(id)` — received messages only.
 - Each requires a mandatory `acknowledge_delivery_trigger: bool`. Without `true`
   the tool returns an error explaining the legal consequences instead of acting.
-- `download_message` fetches the signed message (ZFO), stores it in the local
-  archive, extracts attachments (the ZFO is a PKCS#7/CMS envelope), and returns
-  metadata plus text content.
+- `download_message` fetches the signed received message (`SignedMessageDownload`,
+  ZFO), stores it in the local archive with `direction=received`, extracts
+  attachments (the ZFO is a PKCS#7/CMS envelope), and returns metadata plus text
+  content. A sent dmID is not in that store (ISDS error 1219); use
+  `download_sent_message` for messages you sent.
 
 ### Class C - legal act: sending (`destructiveHint`)
 - `send_message(recipient_id, subject, attachments, dry_run=true)`.
@@ -163,6 +169,7 @@ print(client.get_owner_info())
 
 # Parse a ZFO file with no network access:
 from isds_client.zfo import parse_zfo
+
 parsed = parse_zfo(open("message.zfo", "rb").read())
 print(parsed.envelope, parsed.files)
 ```
@@ -243,10 +250,15 @@ Podrobně a se zdroji: **[docs/delivery-semantics.md](https://github.com/matuspa
 ### Bezpečnostní model
 
 - **Třída A (bezpečné):** `search_databox`, `get_databox_info`, čtení lokálního
-  archivu, `list_sent_messages`, `get_delivery_receipt`, `get_delivery_deadline`.
+  archivu, `list_sent_messages`, `download_sent_message`, `get_delivery_receipt`,
+  `get_delivery_deadline`. `download_sent_message` stáhne podepsanou odeslanou
+  zprávu (`SignedSentMessageDownload`), uloží ZFO do archivu se směrem `sent` a
+  **nevyžaduje** `acknowledge_delivery_trigger` — stažení odeslané zprávy doručení
+  nespouští.
 - **Třída B (spouští doručení, EV13):** `list_received_messages`,
-  `download_message` - vyžadují parametr `acknowledge_delivery_trigger=true`, bez
-  něj vrátí chybu s vysvětlením právních následků.
+  `download_message` (jen přijaté zprávy) - vyžadují parametr
+  `acknowledge_delivery_trigger=true`, bez něj vrátí chybu s vysvětlením právních
+  následků.
 - **Třída C (právní úkon):** `send_message` - výchozí `dry_run=true`; skutečné
   odeslání vyžaduje `dry_run=false` **a** `AGENTOVKA_ALLOW_SEND=true`.
 

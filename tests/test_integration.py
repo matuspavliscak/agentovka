@@ -58,6 +58,21 @@ def test_list_sent_messages(test_client: IsdsClient) -> None:
     assert isinstance(msgs, list)
 
 
+@pytest.mark.skipif(not (_ENABLED and _HAS_CREDS), reason=skip_reason)
+def test_signed_sent_message_download_roundtrip(test_client: IsdsClient) -> None:
+    """Class A: SignedSentMessageDownload returns a parseable ZFO and does not
+    touch the received store (no EV13)."""
+    from isds_client.zfo import parse_zfo
+
+    msgs = test_client.get_list_of_sent_messages(limit=5)
+    assert isinstance(msgs, list)
+    if not msgs:
+        pytest.skip("test box has no sent messages")
+    raw = test_client.signed_sent_message_download(msgs[0].message_id)
+    parsed = parse_zfo(raw)
+    assert parsed.envelope.message_id == msgs[0].message_id
+
+
 # ---------------------------------------------------------------------------
 # DELIVERY-TRIGGERING integration tests (event EV13). These legally deliver
 # every message in the TEST box, which is harmless there but is still kept
